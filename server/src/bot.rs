@@ -5,7 +5,11 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
 
-pub fn spawn_bot_task(room_arc: Arc<RwLock<Room>>, difficulty: BotDifficulty) -> tokio::task::JoinHandle<()> {
+pub fn spawn_bot_task(
+    room_arc: Arc<RwLock<Room>>,
+    difficulty: BotDifficulty,
+    custom_wpm: Option<u32>,
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         // Initial match countdown wait (3.5s)
         tokio::time::sleep(Duration::from_millis(3500)).await;
@@ -15,6 +19,17 @@ pub fn spawn_bot_task(room_arc: Arc<RwLock<Room>>, difficulty: BotDifficulty) ->
             BotDifficulty::Medium => (68.0, 0.04),
             BotDifficulty::Hard => (98.0, 0.015),
             BotDifficulty::CyberGod => (135.0, 0.00),
+            BotDifficulty::Custom => {
+                let w = (custom_wpm.unwrap_or(75) as f32).clamp(15.0, 250.0);
+                let err = if w < 50.0 {
+                    0.06
+                } else if w < 90.0 {
+                    0.03
+                } else {
+                    0.01
+                };
+                (w, err)
+            }
         };
 
         let words = {

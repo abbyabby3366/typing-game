@@ -98,6 +98,10 @@ export class MusicPlayer {
     this.onStateChange?.(false, this.currentTrackTitle);
   }
 
+  public stopPreview(): void {
+    this.stop();
+  }
+
   public togglePreview(url: string, title: string, artist: string = ''): boolean {
     if (this.isPreviewing && this.currentUrl === url) {
       this.stop();

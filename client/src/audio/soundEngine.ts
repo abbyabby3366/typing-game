@@ -408,6 +408,38 @@ class ProceduralSoundEngine {
       osc.stop(now + idx * 0.05 + 0.35);
     });
   }
+
+  // Escape key tap and hold confirmation audio feedback
+  public playEscapeBeep(isConfirm: boolean = false): void {
+    const ctx = this.ensureContext();
+    if (!ctx || this.isMuted) return;
+
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    if (isConfirm) {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(520, now);
+      osc.frequency.exponentialRampToValueAtTime(130, now + 0.3);
+      gain.gain.setValueAtTime(0.3, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+      osc.connect(gain);
+      gain.connect(this.masterGain!);
+      osc.start(now);
+      osc.stop(now + 0.3);
+    } else {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(680, now);
+      osc.frequency.exponentialRampToValueAtTime(840, now + 0.07);
+      gain.gain.setValueAtTime(0.18, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+      osc.connect(gain);
+      gain.connect(this.masterGain!);
+      osc.start(now);
+      osc.stop(now + 0.07);
+    }
+  }
 }
 
 export const soundEngine = new ProceduralSoundEngine();

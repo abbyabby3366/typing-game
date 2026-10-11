@@ -28,6 +28,7 @@ pub struct Room {
     pub p2: Option<PlayerSession>,
     pub is_bot_match: bool,
     pub bot_difficulty: Option<BotDifficulty>,
+    pub custom_bot_wpm: Option<u32>,
     pub passage_title: String,
     pub passage_text: String,
     pub words: Vec<String>,
@@ -46,6 +47,7 @@ impl Room {
         p1: PlayerSession,
         is_bot_match: bool,
         bot_difficulty: Option<BotDifficulty>,
+        custom_bot_wpm: Option<u32>,
     ) -> Self {
         let p1_name = p1.name.clone();
         let (title, text, words) = crate::passages::get_passage_by_category(
@@ -64,15 +66,19 @@ impl Room {
             p1: Some(p1),
             p2: if is_bot_match {
                 let bot_name = match bot_difficulty.unwrap_or(BotDifficulty::Medium) {
-                    BotDifficulty::Easy => "DRONE-ALPHA (40 WPM)",
-                    BotDifficulty::Medium => "NEXUS-V2 (70 WPM)",
-                    BotDifficulty::Hard => "CYBER-VIPER (100 WPM)",
-                    BotDifficulty::CyberGod => "QUANTUM-GOD (135 WPM)",
+                    BotDifficulty::Easy => "DRONE-ALPHA (40 WPM)".to_string(),
+                    BotDifficulty::Medium => "NEXUS-V2 (70 WPM)".to_string(),
+                    BotDifficulty::Hard => "CYBER-VIPER (100 WPM)".to_string(),
+                    BotDifficulty::CyberGod => "QUANTUM-GOD (135 WPM)".to_string(),
+                    BotDifficulty::Custom => {
+                        let w = custom_bot_wpm.unwrap_or(75);
+                        format!("CUSTOM-AI ({} WPM)", w)
+                    }
                 };
                 let (dummy_tx, _) = mpsc::unbounded_channel();
                 Some(PlayerSession {
                     id: "ai-bot".to_string(),
-                    name: bot_name.to_string(),
+                    name: bot_name,
                     role: PlayerRole::Player2,
                     tx: dummy_tx,
                 })
@@ -81,6 +87,7 @@ impl Room {
             },
             is_bot_match,
             bot_difficulty,
+            custom_bot_wpm,
             passage_title: title,
             passage_text: text,
             words,

@@ -158,7 +158,7 @@ export class ModalView {
             RETURN TO LOBBY
           </button>
           <button id="btn-results-rematch" class="btn-cyber-primary">
-            REQUEST REMATCH ⚡
+            REQUEST REMATCH
           </button>
         </div>
       </div>
@@ -182,6 +182,106 @@ export class ModalView {
           onExit();
         }
       );
+    });
+  }
+
+  public showZenComplete(
+    stats: {
+      wpm: number;
+      accuracy: number;
+      maxCombo: number;
+      wordsCompleted: number;
+      charsTyped: number;
+      elapsedSec: number;
+    },
+    passageTitle: string,
+    onRestart: () => void,
+    onExit: () => void
+  ): void {
+    confetti({
+      particleCount: 80,
+      spread: 70,
+      origin: { y: 0.6 },
+      colors: ['#00ffaa', '#00b4d8', '#ffffff'],
+    });
+
+    const { dateStr, timeStr } = this.getFormattedDateTime();
+
+    const mins = Math.floor(stats.elapsedSec / 60);
+    const secs = Math.floor(stats.elapsedSec % 60);
+    const timeFormatted = `${mins}:${secs.toString().padStart(2, '0')}`;
+
+    this.container.classList.remove('hidden');
+    this.container.innerHTML = `
+      <div class="modal-content" style="max-width: 540px;">
+        <div>
+          <h3 class="modal-title" style="color: #00ffaa; font-size: 1.6rem; letter-spacing: 0.12em;">
+            ZEN FLOW COMPLETE
+          </h3>
+          <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">
+            ${passageTitle}
+          </p>
+        </div>
+
+        <div style="background: rgba(4, 9, 20, 0.95); border: 1px solid rgba(0, 255, 170, 0.3); border-radius: 6px; padding: 14px;">
+          <table style="width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 0.84rem;">
+            <tbody>
+              <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.06);">
+                <td style="padding: 9px 8px; color: var(--text-secondary); text-align: left;">NET SPEED</td>
+                <td style="padding: 9px 8px; font-weight: bold; color: var(--cyan-primary); text-align: right; font-size: 1.1rem;">${stats.wpm} WPM</td>
+              </tr>
+              <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.06);">
+                <td style="padding: 9px 8px; color: var(--text-secondary); text-align: left;">ACCURACY</td>
+                <td style="padding: 9px 8px; font-weight: bold; color: #00ffaa; text-align: right;">${stats.accuracy}%</td>
+              </tr>
+              <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.06);">
+                <td style="padding: 9px 8px; color: var(--text-secondary); text-align: left;">PEAK COMBO</td>
+                <td style="padding: 9px 8px; font-weight: bold; color: var(--amber-gold); text-align: right;">${stats.maxCombo}x</td>
+              </tr>
+              <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.06);">
+                <td style="padding: 9px 8px; color: var(--text-secondary); text-align: left;">WORDS & CHARACTERS</td>
+                <td style="padding: 9px 8px; text-align: right; color: var(--text-primary);">${stats.wordsCompleted} words / ${stats.charsTyped} chars</td>
+              </tr>
+              <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.06);">
+                <td style="padding: 9px 8px; color: var(--text-secondary); text-align: left;">SESSION TIME</td>
+                <td style="padding: 9px 8px; text-align: right; color: var(--text-primary);">${timeFormatted}</td>
+              </tr>
+              <!-- Stacked 2-row DateTime Cell complying strictly with user rule -->
+              <tr>
+                <td style="padding: 9px 8px; color: var(--text-secondary); text-align: left;">TIMESTAMP</td>
+                <td style="padding: 9px 8px; text-align: right;">
+                  <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px;">
+                    <span style="font-weight: bold; color: var(--text-primary); font-size: 0.85rem;">${dateStr}</span>
+                    <span style="font-size: 0.7rem; color: var(--text-muted);">${timeStr}</span>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="modal-actions">
+          <button id="btn-zen-lobby" class="btn-cyber-secondary">
+            RETURN TO LOBBY
+          </button>
+          <button id="btn-zen-replay" class="btn-cyber-primary" style="background: linear-gradient(135deg, #00ffaa, #00b4d8); color: #020712;">
+            PRACTICE AGAIN
+          </button>
+        </div>
+      </div>
+    `;
+
+    const replayBtn = this.container.querySelector('#btn-zen-replay');
+    const lobbyBtn = this.container.querySelector('#btn-zen-lobby');
+
+    replayBtn?.addEventListener('click', () => {
+      this.hide();
+      onRestart();
+    });
+
+    lobbyBtn?.addEventListener('click', () => {
+      this.hide();
+      onExit();
     });
   }
 

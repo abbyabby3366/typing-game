@@ -1,5 +1,6 @@
 export type ServerMsg =
   | { type: 'RoomCreated'; payload: { room_code: string; player_id: string; role: 'player1' | 'player2'; settings: any } }
+  | { type: 'RoomSettingsUpdated'; payload: { settings: any } }
   | { type: 'RoomJoined'; payload: { room_code: string; player_id: string; role: 'player1' | 'player2'; opponent_name: string; settings: any } }
   | { type: 'OpponentJoined'; payload: { opponent_name: string } }
   | { type: 'GameStarting'; payload: { countdown_seconds: number; passage_title: string; passage_text: string; words: string[] } }
@@ -14,8 +15,9 @@ export type ServerMsg =
 
 export type ClientMsg =
   | { type: 'CreateRoom'; payload: { player_name: string; error_mode: string; category: string; custom_text: string | null } }
+  | { type: 'UpdateRoomSettings'; payload: { error_mode: string; category: string; custom_text: string | null } }
   | { type: 'JoinRoom'; payload: { room_code: string; player_name: string } }
-  | { type: 'StartBotMatch'; payload: { player_name: string; bot_difficulty: string; error_mode: string; category: string; custom_text: string | null } }
+  | { type: 'StartBotMatch'; payload: { player_name: string; bot_difficulty: string; custom_bot_wpm?: number; error_mode: string; category: string; custom_text: string | null } }
   | { type: 'WordCompleted'; payload: { word_index: number; word: string; wpm: number; accuracy: number; combo: number; push_power: number } }
   | { type: 'TypoPenalized'; payload: { combo_lost: number } }
   | { type: 'TypingProgress'; payload: { char_index: number; word_index: number; wpm: number; accuracy: number; combo: number } }

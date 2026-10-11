@@ -14,6 +14,7 @@ pub enum BotDifficulty {
     Medium,   // ~70 WPM
     Hard,     // ~100 WPM
     CyberGod, // ~135 WPM
+    Custom,   // User-specified custom WPM
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -58,6 +59,11 @@ pub enum ClientMsg {
         category: String,
         custom_text: Option<String>,
     },
+    UpdateRoomSettings {
+        error_mode: ErrorMode,
+        category: String,
+        custom_text: Option<String>,
+    },
     JoinRoom {
         room_code: String,
         player_name: String,
@@ -65,6 +71,8 @@ pub enum ClientMsg {
     StartBotMatch {
         player_name: String,
         bot_difficulty: BotDifficulty,
+        #[serde(default)]
+        custom_bot_wpm: Option<u32>,
         error_mode: ErrorMode,
         category: String,
         #[serde(default)]
@@ -99,6 +107,9 @@ pub enum ServerMsg {
         room_code: String,
         player_id: String,
         role: PlayerRole,
+        settings: GameSettings,
+    },
+    RoomSettingsUpdated {
         settings: GameSettings,
     },
     RoomJoined {

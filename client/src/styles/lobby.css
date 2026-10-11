@@ -5,15 +5,16 @@
   border: 1px solid rgba(0, 240, 255, 0.25);
   border-top: 2px solid var(--cyan-primary);
   border-radius: 6px;
-  padding: 26px 34px;
+  padding: 24px 32px;
   width: 100%;
   max-width: 760px;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.9), 0 0 30px rgba(0, 240, 255, 0.05);
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
   contain: layout style;
   transform: translateZ(0);
+  margin: auto 0;
 }
 
 .lobby-header-row {
@@ -70,8 +71,8 @@
 /* SEGMENTED MODE SELECTOR */
 .mode-segmented-control {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
   background: #050812;
   padding: 6px;
   border-radius: 6px;
@@ -173,8 +174,8 @@
 /* BOT DIFFICULTY HORIZONTAL CARDS */
 .bot-difficulty-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
 }
 
 .bot-diff-card {
@@ -236,6 +237,12 @@
   color: #ff0055;
   background: rgba(255, 0, 85, 0.15);
   border: 1px solid rgba(255, 0, 85, 0.4);
+}
+
+.badge-custom {
+  color: #d946ef;
+  background: rgba(217, 70, 239, 0.14);
+  border: 1px solid rgba(217, 70, 239, 0.35);
 }
 
 .diff-name {
@@ -334,6 +341,7 @@
   max-height: 175px;
   overflow-y: auto;
   overflow-x: hidden;
+  overscroll-behavior: contain;
   transform: translateZ(0);
   will-change: transform;
 }
@@ -444,6 +452,16 @@
   margin-top: 4px;
 }
 
+.btn-zen-launch {
+  background: linear-gradient(135deg, rgba(0, 255, 170, 0.9), rgba(0, 180, 216, 0.9));
+  color: #020712;
+}
+
+.btn-zen-launch:hover {
+  box-shadow: 0 0 24px rgba(0, 255, 170, 0.5);
+  filter: brightness(1.1);
+}
+
 /* MULTIPLAYER LOBBY SUBPANELS */
 .lobby-grid {
   display: grid;
@@ -469,4 +487,27 @@
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+@media (max-height: 850px) {
+  .lobby-card {
+    padding: 18px 24px;
+    gap: 12px;
+  }
+  .section-group {
+    padding: 10px 14px;
+    gap: 8px;
+  }
+  .btn-launch {
+    padding: 12px;
+  }
+}
+
+@media (max-width: 720px) {
+  .mode-segmented-control {
+    grid-template-columns: 1fr;
+  }
+  .bot-difficulty-grid {
+    grid-template-columns: repeat(auto-fit, minmax(105px, 1fr));
+  }
 }

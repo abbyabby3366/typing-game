@@ -1,6 +1,7 @@
 import { TypingEngine, TypingStats } from '../game/typingEngine';
 import { SongTrack } from '../game/songCatalog';
 import { musicPlayer } from '../audio/musicPlayer';
+import { ICONS } from './icons';
 
 export interface OpponentStats {
   name: string;
@@ -66,8 +67,8 @@ export class HudView {
           <div style="font-family: var(--font-display); font-size: 3.2rem; font-weight: 900; letter-spacing: 0.2em; color: var(--cyan-primary); text-shadow: 0 0 20px var(--cyan-glow); margin: 6px 0;">
             ${roomCode}
           </div>
-          <button id="btn-copy-link" class="btn-cyber-secondary" style="font-size: 0.75rem; padding: 8px 16px;">
-            📋 COPY INVITE LINK
+          <button id="btn-copy-link" class="btn-cyber-secondary" style="font-size: 0.75rem; padding: 8px 16px; display: inline-flex; align-items: center; gap: 6px;">
+            ${ICONS.copy(15)} COPY INVITE LINK
           </button>
         </div>
 
@@ -87,9 +88,9 @@ export class HudView {
     const copyBtn = this.container.querySelector('#btn-copy-link');
     copyBtn?.addEventListener('click', () => {
       navigator.clipboard.writeText(fullUrl);
-      copyBtn.textContent = '✓ LINK COPIED!';
+      copyBtn.innerHTML = `${ICONS.check(15)} LINK COPIED!`;
       setTimeout(() => {
-        if (copyBtn) copyBtn.textContent = '📋 COPY INVITE LINK';
+        if (copyBtn) copyBtn.innerHTML = `${ICONS.copy(15)} COPY INVITE LINK`;
       }, 2000);
     });
 
@@ -121,12 +122,34 @@ export class HudView {
     passageTitle: string,
     errorMode: string,
     words: string[],
-    activeSong: SongTrack | null = null
+    activeSong: SongTrack | null = null,
+    isZenMode: boolean = false
   ): void {
     const isStrict = errorMode === 'strict_errors';
 
     this.container.innerHTML = `
       <div class="hud-container">
+        ${
+          isZenMode
+            ? `
+        <!-- ZEN FLOW PROGRESS TRACKER -->
+        <div class="zen-flow-wrapper">
+          <div class="zen-flow-header">
+            <div class="zen-mode-badge">
+              <span style="display: flex; align-items: center;">${ICONS.zen(15)}</span>
+              <span>ZEN FLOW MODE // NO DUEL</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <span id="zen-progress-percent" style="color: #00ffaa; font-family: var(--font-mono); font-size: 0.85rem; font-weight: 700;">0%</span>
+              <span id="zen-progress-words" style="color: var(--text-secondary); font-family: var(--font-mono); font-size: 0.75rem;">0 / ${words.length} WORDS</span>
+            </div>
+          </div>
+          <div class="zen-bar-track">
+            <div id="zen-progress-fill" class="zen-bar-fill"></div>
+          </div>
+        </div>
+        `
+            : `
         <!-- TUG OF WAR MOMENTUM BAR -->
         <div class="tug-meter-wrapper">
           <div class="tug-label-row">
@@ -141,6 +164,8 @@ export class HudView {
             <div id="tug-indicator" class="tug-clash-indicator"></div>
           </div>
         </div>
+        `
+        }
 
         ${
           activeSong
@@ -148,7 +173,7 @@ export class HudView {
         <!-- IN-GAME MUSIC CONTROLS FOR LYRICS MODE -->
         <div id="hud-music-bar" class="hud-music-player">
           <div class="hud-music-info">
-            <span class="hud-music-icon">🎵</span>
+            <span class="hud-music-icon" style="display: flex; align-items: center;">${ICONS.music(14)}</span>
             <div class="hud-music-meta">
               <span class="hud-music-title">${activeSong.title}</span>
               <span class="hud-music-artist">${activeSong.artist} &bull; ${activeSong.avgWpm} WPM</span>
@@ -156,8 +181,8 @@ export class HudView {
           </div>
           <div class="hud-music-controls">
             <span id="hud-music-time" class="hud-music-time">0:00 / ${Math.floor(activeSong.durationSec / 60)}:${(activeSong.durationSec % 60).toString().padStart(2, '0')}</span>
-            <button type="button" id="hud-music-toggle" class="hud-music-btn" title="Play/Pause Track">
-              ⏸️
+            <button type="button" id="hud-music-toggle" class="hud-music-btn" title="Play/Pause Track" style="display: flex; align-items: center; justify-content: center;">
+              ${ICONS.pause(14)}
             </button>
             <input type="range" id="hud-music-vol" class="hud-music-volume" min="0" max="1" step="0.05" value="${musicPlayer.getVolume()}" title="Music Volume" />
           </div>
@@ -174,8 +199,9 @@ export class HudView {
               <span class="error-mode-badge ${isStrict ? 'badge-strict' : 'badge-allow'}">
                 ${isStrict ? 'STRICT: ZERO TOLERANCE' : 'ALLOW ERRORS'}
               </span>
-              <button id="btn-leave-match" class="btn-cyber-danger" style="padding: 4px 10px; font-size: 0.7rem;">
-                SURRENDER
+              <button id="btn-leave-match" class="${isZenMode ? 'btn-cyber-secondary' : 'btn-cyber-danger'}" style="padding: 4px 12px; font-size: 0.72rem; display: inline-flex; align-items: center; gap: 4px; ${isZenMode ? 'border-color: rgba(0, 255, 170, 0.4); color: #00ffaa;' : ''}">
+                ${isZenMode ? `${ICONS.x(12)} EXIT ZEN` : 'SURRENDER'}
+                <kbd style="margin-left: 4px; padding: 1px 4px; font-size: 0.62rem; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.18); border-radius: 3px; font-family: var(--font-mono); letter-spacing: 0.05em; color: var(--text-secondary);">ESC×2</kbd>
               </button>
             </div>
           </div>
@@ -196,16 +222,29 @@ export class HudView {
                 <span id="stat-acc" class="stat-val" style="color: #00ffaa;">100%</span>
               </div>
               <div id="stat-combo-wrapper" class="combo-pill hidden">
-                <span>🔥</span>
+                <span style="display: flex; align-items: center;">${ICONS.flame(14)}</span>
                 <span id="stat-combo">0X</span>
               </div>
             </div>
 
-            <div style="text-align: center; font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-muted);">
-              PRESS KEYS TO FIRE WORDS // SPACE ADVANCES
+            <div style="text-align: center; font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-muted); display: flex; align-items: center; justify-content: center; gap: 8px;">
+              <span>${isZenMode ? 'FLOW WITH EACH WORD // PRESS SPACE TO ADVANCE' : 'PRESS KEYS TO FIRE WORDS // SPACE ADVANCES'}</span>
+              <span style="opacity: 0.4;">&bull;</span>
+              <span style="color: var(--text-secondary);"><kbd style="font-size: 0.65rem; padding: 1px 4px; background: rgba(255,255,255,0.08); border-radius: 3px; border: 1px solid rgba(255,255,255,0.15);">ESC×2</kbd> ${isZenMode ? 'EXIT' : 'FORFEIT'}</span>
             </div>
 
-            <!-- OPPONENT STATS -->
+            <!-- RIGHT CLUSTER (OPPONENT OR ZEN PROGRESS) -->
+            ${
+              isZenMode
+                ? `
+            <div class="player-stats-cluster" style="justify-content: flex-end;">
+              <div class="stat-unit" style="align-items: flex-end;">
+                <span class="stat-label">WORDS COMPLETED</span>
+                <span id="stat-zen-words" class="stat-val text-cyan">0 / ${words.length}</span>
+              </div>
+            </div>
+            `
+                : `
             <div class="player-stats-cluster" style="justify-content: flex-end;">
               <div class="stat-unit" style="align-items: flex-end;">
                 <span class="stat-label">OPPONENT WPM</span>
@@ -216,6 +255,8 @@ export class HudView {
                 <span id="stat-opp-words" class="stat-val" style="color: var(--text-secondary);">0/${words.length}</span>
               </div>
             </div>
+            `
+            }
           </div>
         </div>
       </div>
@@ -248,10 +289,10 @@ export class HudView {
       toggleBtn?.addEventListener('click', () => {
         if (musicPlayer.isPlaying()) {
           musicPlayer.pause();
-          toggleBtn.textContent = '▶️';
+          toggleBtn.innerHTML = ICONS.play(14);
         } else {
           musicPlayer.play();
-          toggleBtn.textContent = '⏸️';
+          toggleBtn.innerHTML = ICONS.pause(14);
         }
       });
 
@@ -271,7 +312,7 @@ export class HudView {
 
       musicPlayer.onStateChange = (isPlaying) => {
         if (toggleBtn) {
-          toggleBtn.textContent = isPlaying ? '⏸️' : '▶️';
+          toggleBtn.innerHTML = isPlaying ? ICONS.pause(14) : ICONS.play(14);
         }
       };
     }
@@ -485,5 +526,17 @@ export class HudView {
       if (this.oppWpmEl) this.oppWpmEl.textContent = `${Math.round(oppStats.wpm)}`;
       if (this.oppWordsEl) this.oppWordsEl.textContent = `${oppStats.wordsCompleted}/${oppStats.totalWords}`;
     }
+  }
+
+  public updateZenProgress(wordsCompleted: number, totalWords: number): void {
+    const pct = totalWords > 0 ? Math.min(100, Math.round((wordsCompleted / totalWords) * 100)) : 0;
+    const fill = this.container.querySelector('#zen-progress-fill') as HTMLElement;
+    const pctEl = this.container.querySelector('#zen-progress-percent');
+    const wordsEl = this.container.querySelector('#zen-progress-words');
+    const zenStat = this.container.querySelector('#stat-zen-words');
+    if (fill) fill.style.width = `${pct}%`;
+    if (pctEl) pctEl.textContent = `${pct}%`;
+    if (wordsEl) wordsEl.textContent = `${wordsCompleted} / ${totalWords} WORDS`;
+    if (zenStat) zenStat.textContent = `${wordsCompleted} / ${totalWords}`;
   }
 }

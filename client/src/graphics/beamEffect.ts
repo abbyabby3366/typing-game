@@ -277,6 +277,21 @@ export class BeamEffect {
     }
   }
 
+  public setVisible(visible: boolean): void {
+    this.p1BeamInner.visible = visible;
+    this.p1BeamOuter.visible = visible;
+    this.p2BeamInner.visible = visible;
+    this.p2BeamOuter.visible = visible;
+    this.nexusCore.visible = visible;
+    this.nexusHalo.visible = visible;
+    this.nexusSparks.visible = visible;
+    if (!visible) {
+      for (const sw of this.shockwaves) {
+        sw.mesh.visible = false;
+      }
+    }
+  }
+
   public dispose(): void {
     this.scene.remove(this.p1BeamInner);
     this.scene.remove(this.p1BeamOuter);

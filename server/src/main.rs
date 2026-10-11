@@ -149,7 +149,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                     tx: tx.clone(),
                 };
 
-                let room = Room::new(room_code.clone(), settings.clone(), session, false, None);
+                let room = Room::new(room_code.clone(), settings.clone(), session, false, None, None);
                 let room_arc = Arc::new(RwLock::new(room));
 
                 {
@@ -169,9 +169,33 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                 });
             }
 
+            ClientMsg::UpdateRoomSettings {
+                error_mode,
+                category,
+                custom_text,
+            } => {
+                if let (Some(ref room_arc), Some(PlayerRole::Player1)) = (&current_room_arc, player_role) {
+                    let mut room = room_arc.write().await;
+                    if room.state == RoomState::WaitingForOpponent {
+                        room.settings.error_mode = error_mode;
+                        room.settings.category = category.clone();
+                        room.settings.custom_text = custom_text.clone();
+                        let (title, text, words) = passages::get_passage_by_category(&category, custom_text.as_deref());
+                        room.passage_title = title;
+                        room.passage_text = text;
+                        room.words = words;
+
+                        let _ = tx.send(ServerMsg::RoomSettingsUpdated {
+                            settings: room.settings.clone(),
+                        });
+                    }
+                }
+            }
+
             ClientMsg::StartBotMatch {
                 player_name,
                 bot_difficulty,
+                custom_bot_wpm,
                 error_mode,
                 category,
                 custom_text,
@@ -197,6 +221,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                     session,
                     true,
                     Some(bot_difficulty),
+                    custom_bot_wpm,
                 );
                 room.state = RoomState::Active;
 
@@ -205,7 +230,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                 let words = room.words.clone();
 
                 let room_arc = Arc::new(RwLock::new(room));
-                let bot_handle = bot::spawn_bot_task(room_arc.clone(), bot_difficulty);
+                let bot_handle = bot::spawn_bot_task(room_arc.clone(), bot_difficulty, custom_bot_wpm);
                 {
                     let mut r = room_arc.write().await;
                     r.bot_abort_handle = Some(bot_handle);
@@ -374,7 +399,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
 
                         if room.is_bot_match {
                             if let Some(diff) = room.bot_difficulty {
-                                let bot_handle = bot::spawn_bot_task(room_arc.clone(), diff);
+                                let bot_handle = bot::spawn_bot_task(room_arc.clone(), diff, room.custom_bot_wpm);
                                 room.bot_abort_handle = Some(bot_handle);
                             }
                         }

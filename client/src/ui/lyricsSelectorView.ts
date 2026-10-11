@@ -1,6 +1,7 @@
 import { SONG_CATALOG, SongTrack } from '../game/songCatalog';
 import { musicPlayer } from '../audio/musicPlayer';
 import { soundEngine } from '../audio/soundEngine';
+import { ICONS } from './icons';
 
 export class LyricsSelectorView {
   private container: HTMLElement;
@@ -50,7 +51,7 @@ export class LyricsSelectorView {
         <!-- Header & Difficulty Filter Tabs -->
         <div class="lyrics-header-row">
           <div class="lyrics-title-tag">
-            <span>🎵</span>
+            <span style="display: flex; align-items: center;">${ICONS.music(14)}</span>
             <span>SONG CATALOG (${totalCount} TRACKS)</span>
           </div>
           <div class="lyrics-wpm-filters">
@@ -95,7 +96,7 @@ export class LyricsSelectorView {
                     <span class="song-artist" title="${song.artist}">${song.artist} &bull; ${song.genre}</span>
                   </div>
                   <button type="button" class="btn-preview-audio ${isPreviewing ? 'previewing' : ''}" data-preview-url="${song.audioUrl}" data-preview-title="${song.title}" data-preview-artist="${song.artist}">
-                    ${isPreviewing ? '⏹️ STOP' : '▶️ PREVIEW'}
+                    ${isPreviewing ? `${ICONS.stop(12)} STOP` : `${ICONS.play(12)} PREVIEW`}
                   </button>
                 </div>
                 <div class="song-card-footer">
@@ -114,7 +115,7 @@ export class LyricsSelectorView {
         <div class="custom-song-box">
           <div class="custom-song-header">
             <label class="custom-file-label" for="input-custom-song-file">
-              <span>📁</span>
+              <span style="display: flex; align-items: center;">${ICONS.folder(14)}</span>
               <span>${this.customSong ? `Loaded: ${this.customSong.title}` : 'Upload Custom MP3 / Audio File'}</span>
             </label>
             <input type="file" id="input-custom-song-file" accept="audio/*" style="display: none;" />
@@ -243,10 +244,10 @@ export class LyricsSelectorView {
       const title = btn.getAttribute('data-preview-title');
       if (isPlaying && title === currentTitle) {
         btn.classList.add('previewing');
-        btn.textContent = '⏹️ STOP';
+        btn.innerHTML = `${ICONS.stop(12)} STOP`;
       } else {
         btn.classList.remove('previewing');
-        btn.textContent = '▶️ PREVIEW';
+        btn.innerHTML = `${ICONS.play(12)} PREVIEW`;
       }
     });
   }
