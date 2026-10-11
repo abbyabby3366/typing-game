@@ -259,8 +259,16 @@ export class LobbyView {
   private attachEventListeners(): void {
     const nameInput = this.container.querySelector('#input-pilot-name') as HTMLInputElement;
 
-    // Save name on edit
+    // Save name on edit with light debounce to prevent synchronous storage I/O stalls
+    let nameSaveTimer: number | null = null;
     nameInput?.addEventListener('input', () => {
+      if (nameSaveTimer !== null) clearTimeout(nameSaveTimer);
+      nameSaveTimer = window.setTimeout(() => {
+        localStorage.setItem('cyber_pilot_name', nameInput.value.trim());
+        nameSaveTimer = null;
+      }, 250);
+    });
+    nameInput?.addEventListener('change', () => {
       localStorage.setItem('cyber_pilot_name', nameInput.value.trim());
     });
 

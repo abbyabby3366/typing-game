@@ -49,16 +49,43 @@ pub fn spawn_bot_task(room_arc: Arc<RwLock<Room>>, difficulty: BotDifficulty) ->
             };
 
             let delay_ms = ((base_secs * jitter * 1000.0) as u64).max(250);
-            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+            let char_count = word.chars().count().max(1);
+            let char_step_ms = (delay_ms / (char_count as u64 + 1)).max(30);
+
+            // Stream incremental character progress
+            let mut aborted = false;
+            for c_idx in 1..=char_count {
+                tokio::time::sleep(Duration::from_millis(char_step_ms)).await;
+                let r = room_arc.read().await;
+                if r.state != crate::room::RoomState::Active {
+                    aborted = true;
+                    break;
+                }
+                r.broadcast(ServerMsg::OpponentProgressUpdate {
+                    player_role: PlayerRole::Player2,
+                    char_index: c_idx,
+                    word_index: idx,
+                    wpm: target_wpm * jitter,
+                    accuracy: if has_typo { 94.0 } else { 99.0 },
+                    combo,
+                });
+            }
+
+            if aborted {
+                break;
+            }
+
+            // Trailing space delay
+            tokio::time::sleep(Duration::from_millis(char_step_ms)).await;
 
             if has_typo {
                 combo = 0;
-                tokio::time::sleep(Duration::from_millis(250)).await;
+                tokio::time::sleep(Duration::from_millis(200)).await;
             } else {
                 combo += 1;
             }
 
-            // Progress update
+            // Progress update and word completion
             let mut room = room_arc.write().await;
             if room.state != crate::room::RoomState::Active {
                 break;
@@ -78,13 +105,13 @@ pub fn spawn_bot_task(room_arc: Arc<RwLock<Room>>, difficulty: BotDifficulty) ->
                 break;
             }
 
-            // Also broadcast opponent progress for smooth visual tracking
+            // Broadcast final word progress update
             room.broadcast(ServerMsg::OpponentProgressUpdate {
                 player_role: PlayerRole::Player2,
                 char_index: 0,
                 word_index: idx + 1,
                 wpm: target_wpm * jitter,
-                accuracy: 98.0,
+                accuracy: if has_typo { 94.0 } else { 99.0 },
                 combo,
             });
         }

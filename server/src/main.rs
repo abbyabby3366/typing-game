@@ -86,6 +86,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
 
     let player_id = Uuid::new_v4().to_string();
     let mut current_room_code: Option<String> = None;
+    let mut current_room_arc: Option<Arc<RwLock<Room>>> = None;
     let mut player_role: Option<PlayerRole> = None;
 
     // Task to forward outgoing server messages to WebSocket client.
@@ -153,10 +154,11 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
 
                 {
                     let mut rooms = state.rooms.write().await;
-                    rooms.insert(room_code.clone(), room_arc);
+                    rooms.insert(room_code.clone(), room_arc.clone());
                 }
 
                 current_room_code = Some(room_code.clone());
+                current_room_arc = Some(room_arc);
                 player_role = Some(PlayerRole::Player1);
 
                 let _ = tx.send(ServerMsg::RoomCreated {
@@ -211,10 +213,11 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
 
                 {
                     let mut rooms = state.rooms.write().await;
-                    rooms.insert(room_code.clone(), room_arc);
+                    rooms.insert(room_code.clone(), room_arc.clone());
                 }
 
                 current_room_code = Some(room_code.clone());
+                current_room_arc = Some(room_arc);
                 player_role = Some(PlayerRole::Player1);
 
                 let _ = tx.send(ServerMsg::RoomCreated {
@@ -269,6 +272,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                     room.state = RoomState::Active;
 
                     current_room_code = Some(code_upper.clone());
+                    current_room_arc = Some(room_arc.clone());
                     player_role = Some(PlayerRole::Player2);
 
                     let _ = tx.send(ServerMsg::RoomJoined {
@@ -307,17 +311,10 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                 accuracy,
                 ..
             } => {
-                if let (Some(ref code), Some(role)) = (&current_room_code, player_role) {
-                    let room_opt = {
-                        let rooms = state.rooms.read().await;
-                        rooms.get(code).cloned()
-                    };
-
-                    if let Some(room_arc) = room_opt {
-                        let mut room = room_arc.write().await;
-                        if let Some(game_over) = room.handle_word_completed(role, word, combo, wpm, accuracy) {
-                            room.broadcast(game_over);
-                        }
+                if let (Some(ref room_arc), Some(role)) = (&current_room_arc, player_role) {
+                    let mut room = room_arc.write().await;
+                    if let Some(game_over) = room.handle_word_completed(role, word, combo, wpm, accuracy) {
+                        room.broadcast(game_over);
                     }
                 }
             }
@@ -329,26 +326,19 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                 accuracy,
                 combo,
             } => {
-                if let (Some(ref code), Some(role)) = (&current_room_code, player_role) {
-                    let room_opt = {
-                        let rooms = state.rooms.read().await;
-                        rooms.get(code).cloned()
-                    };
-
-                    if let Some(room_arc) = room_opt {
-                        let room = room_arc.read().await;
-                        room.send_to_opponent(
-                            role,
-                            ServerMsg::OpponentProgressUpdate {
-                                player_role: role,
-                                char_index,
-                                word_index,
-                                wpm,
-                                accuracy,
-                                combo,
-                            },
-                        );
-                    }
+                if let (Some(ref room_arc), Some(role)) = (&current_room_arc, player_role) {
+                    let room = room_arc.read().await;
+                    room.send_to_opponent(
+                        role,
+                        ServerMsg::OpponentProgressUpdate {
+                            player_role: role,
+                            char_index,
+                            word_index,
+                            wpm,
+                            accuracy,
+                            combo,
+                        },
+                    );
                 }
             }
 
@@ -357,51 +347,44 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
             }
 
             ClientMsg::RequestRematch => {
-                if let (Some(ref code), Some(role)) = (&current_room_code, player_role) {
-                    let room_opt = {
-                        let rooms = state.rooms.read().await;
-                        rooms.get(code).cloned()
-                    };
+                if let (Some(ref room_arc), Some(role)) = (&current_room_arc, player_role) {
+                    let mut room = room_arc.write().await;
+                    match role {
+                        PlayerRole::Player1 => room.p1_rematch = true,
+                        PlayerRole::Player2 => room.p2_rematch = true,
+                    }
 
-                    if let Some(room_arc) = room_opt {
-                        let mut room = room_arc.write().await;
-                        match role {
-                            PlayerRole::Player1 => room.p1_rematch = true,
-                            PlayerRole::Player2 => room.p2_rematch = true,
-                        }
+                    if room.is_bot_match || (room.p1_rematch && room.p2_rematch) {
+                        // Reset state for new round
+                        let (title, text, words) = passages::get_passage_by_category(
+                            &room.settings.category,
+                            room.settings.custom_text.as_deref(),
+                        );
+                        room.passage_title = title.clone();
+                        room.passage_text = text.clone();
+                        room.words = words.clone();
+                        room.tug_position = 0.0;
+                        room.state = RoomState::Active;
+                        room.p1_rematch = false;
+                        room.p2_rematch = false;
+                        room.p1_stats.words_completed = 0;
+                        room.p1_stats.chars_typed = 0;
+                        room.p2_stats.words_completed = 0;
+                        room.p2_stats.chars_typed = 0;
 
-                        if room.is_bot_match || (room.p1_rematch && room.p2_rematch) {
-                            // Reset state for new round
-                            let (title, text, words) = passages::get_passage_by_category(
-                                &room.settings.category,
-                                room.settings.custom_text.as_deref(),
-                            );
-                            room.passage_title = title.clone();
-                            room.passage_text = text.clone();
-                            room.words = words.clone();
-                            room.tug_position = 0.0;
-                            room.state = RoomState::Active;
-                            room.p1_rematch = false;
-                            room.p2_rematch = false;
-                            room.p1_stats.words_completed = 0;
-                            room.p1_stats.chars_typed = 0;
-                            room.p2_stats.words_completed = 0;
-                            room.p2_stats.chars_typed = 0;
-
-                            if room.is_bot_match {
-                                if let Some(diff) = room.bot_difficulty {
-                                    let bot_handle = bot::spawn_bot_task(room_arc.clone(), diff);
-                                    room.bot_abort_handle = Some(bot_handle);
-                                }
+                        if room.is_bot_match {
+                            if let Some(diff) = room.bot_difficulty {
+                                let bot_handle = bot::spawn_bot_task(room_arc.clone(), diff);
+                                room.bot_abort_handle = Some(bot_handle);
                             }
-
-                            room.broadcast(ServerMsg::RematchAgreed {
-                                countdown_seconds: 3,
-                                passage_title: title,
-                                passage_text: text,
-                                words,
-                            });
                         }
+
+                        room.broadcast(ServerMsg::RematchAgreed {
+                            countdown_seconds: 3,
+                            passage_title: title,
+                            passage_text: text,
+                            words,
+                        });
                     }
                 }
             }
@@ -413,14 +396,9 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
     }
 
     // Clean up room on player disconnect
-    if let (Some(ref code), Some(role)) = (&current_room_code, player_role) {
-        let room_opt = {
-            let rooms = state.rooms.read().await;
-            rooms.get(code).cloned()
-        };
-
+    if let (Some(ref code), Some(ref room_arc), Some(role)) = (&current_room_code, &current_room_arc, player_role) {
         let mut should_remove = false;
-        if let Some(room_arc) = room_opt {
+        {
             let mut room = room_arc.write().await;
             if let Some(h) = room.bot_abort_handle.take() {
                 h.abort();

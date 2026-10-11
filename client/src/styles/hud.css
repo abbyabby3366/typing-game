@@ -169,6 +169,8 @@
   color: #00ffaa;
   text-shadow: 0 0 8px rgba(0, 255, 170, 0.4);
 }
+
+.char {
   position: relative;
   transition: color 0.1s;
 }
