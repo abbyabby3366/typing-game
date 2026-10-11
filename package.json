@@ -1,0 +1,16 @@
+{
+  "name": "typing-clash-root",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently --kill-others-on-fail -n \"SERVER,CLIENT\" -c \"cyan.bold,magenta.bold\" \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "nodemon --watch server/src -e rs --exec \"cargo run --manifest-path server/Cargo.toml\"",
+    "dev:client": "npm run dev --prefix client",
+    "build:client": "npm run build --prefix client",
+    "build:server": "cargo build --release --manifest-path server/Cargo.toml"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "nodemon": "^3.1.9"
+  }
+}

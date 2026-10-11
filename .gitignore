@@ -1,0 +1,56 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Production & Build Outputs
+dist/
+*/dist/
+dist-ssr/
+build/
+
+# Rust / Cargo
+target/
+server/target/
+**/*.rs.bk
+
+# Environment Variables & Secrets
+.env
+.env.local
+.env.*.local
+*.env
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Tool & Cache Directories
+.fallow/
+.cache/
+.temp/
+.tmp/
+
+# IDE & Editor Artifacts
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Operating System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/

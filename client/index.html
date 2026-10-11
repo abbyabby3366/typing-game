@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CYBER CLASH // 3D Tug-of-War Typing Duel</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&family=Orbitron:wght@500;700;900&family=Outfit:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <!-- 3D Three.js WebGL Canvas -->
+    <canvas id="three-canvas"></canvas>
+
+    <!-- CRT / Holographic Scanline Overlay -->
+    <div class="crt-overlay"></div>
+
+    <!-- Main UI Root Overlay -->
+    <div id="app">
+      <!-- Top Cyber Status Bar -->
+      <header id="top-bar">
+        <div class="brand">
+          <span class="brand-badge">PROTOTYPE V1.0</span>
+          <h1 class="brand-title">CYBER<span class="text-cyan">CLASH</span></h1>
+        </div>
+        <div class="top-actions">
+          <div id="connection-status" class="status-pill status-disconnected">
+            <span class="status-dot"></span>
+            <span class="status-text">CONNECTING</span>
+          </div>
+          <button id="audio-toggle-btn" class="cyber-btn-icon" title="Toggle Audio (Procedural Web Audio Engine)">
+            <span id="audio-icon">🔊</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- Main Dynamic View Container -->
+      <main id="main-view"></main>
+
+      <!-- Global Alert / Toast Notification Center -->
+      <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+      <!-- Global Modal Container (Confirmations & Results) -->
+      <div id="modal-container" class="modal-overlay hidden"></div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

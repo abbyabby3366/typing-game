@@ -1,0 +1,22 @@
+{
+  "name": "typing-clash-client",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5173 --open",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "three": "^0.170.0",
+    "canvas-confetti": "^1.9.4",
+    "lucide": "^0.469.0"
+  },
+  "devDependencies": {
+    "@types/canvas-confetti": "^1.9.0",
+    "@types/three": "^0.170.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3"
+  }
+}
