@@ -5,6 +5,8 @@ import { ProjectileManager } from './graphics/projectileManager';
 import { soundEngine } from './audio/soundEngine';
 import { TypingEngine, ErrorMode } from './game/typingEngine';
 import { NetworkClient, ServerMsg } from './game/networkClient';
+import { SongTrack } from './game/songCatalog';
+import { musicPlayer } from './audio/musicPlayer';
 import { LobbyView } from './ui/lobbyView';
 import { HudView } from './ui/hudView';
 import { ModalView } from './ui/modalView';
@@ -35,6 +37,7 @@ class App {
   private passageTitle: string = 'CYBER CLASH PROTOCOL';
   private isMatchActive: boolean = false;
   private lastTugPosition: number = 0;
+  private activeSong: SongTrack | null = null;
 
   constructor() {
     this.canvas = document.getElementById('three-canvas') as HTMLCanvasElement;
@@ -182,6 +185,7 @@ class App {
     this.lobbyView.onCreateRoom = (cfg) => {
       this.myName = cfg.playerName;
       this.currentErrorMode = cfg.errorMode;
+      this.activeSong = cfg.selectedSong || null;
       this.network.send({
         type: 'CreateRoom',
         payload: {
@@ -204,9 +208,10 @@ class App {
       });
     };
 
-    this.lobbyView.onStartBot = (playerName, difficulty, errorMode, category, customText) => {
+    this.lobbyView.onStartBot = (playerName, difficulty, errorMode, category, customText, selectedSong) => {
       this.myName = playerName;
       this.currentErrorMode = errorMode;
+      this.activeSong = selectedSong || null;
       this.network.send({
         type: 'StartBotMatch',
         payload: {
@@ -226,6 +231,7 @@ class App {
         () => {
           this.isMatchActive = false;
           soundEngine.stopBeamHum();
+          musicPlayer.stop();
           this.network.send({ type: 'LeaveRoom' });
           this.lobbyView.render();
         }
@@ -325,20 +331,27 @@ class App {
     text: string,
     words: string[]
   ): void {
-    this.passageTitle = title;
+    this.passageTitle = this.activeSong
+      ? `${this.activeSong.title} - ${this.activeSong.artist} (${this.activeSong.avgWpm} WPM)`
+      : title;
     this.typingEngine.setWords(words, this.currentErrorMode);
     this.hudView.renderBattleHud(
       this.myName,
       this.opponentName,
       this.passageTitle,
       this.currentErrorMode,
-      words
+      words,
+      this.activeSong
     );
     this.hudView.updateTypingDisplay(this.typingEngine);
 
     // Reset beam to center
     this.beamEffect.setTugPosition(0);
     this.hudView.updateTugMeter(0);
+
+    if (this.activeSong) {
+      musicPlayer.loadTrack(this.activeSong.audioUrl, this.activeSong.title, this.activeSong.artist);
+    }
 
     // Countdown timer
     let count = countdown;
@@ -350,6 +363,9 @@ class App {
         this.isMatchActive = true;
         this.typingEngine.start();
         soundEngine.startBeamHum();
+        if (this.activeSong) {
+          musicPlayer.play(true);
+        }
       }
       count--;
     }, 1000);
@@ -385,6 +401,7 @@ class App {
   private handleGameOver(payload: any): void {
     this.isMatchActive = false;
     this.typingEngine.stop();
+    musicPlayer.stop();
 
     const isWinner = payload.winner === this.myRole;
     const isDraw = payload.winner === null;
@@ -406,9 +423,11 @@ class App {
         p2Stats: payload.p2_stats,
       },
       () => {
+        musicPlayer.stop();
         this.network.send({ type: 'RequestRematch' });
       },
       () => {
+        musicPlayer.stop();
         this.network.send({ type: 'LeaveRoom' });
         this.lobbyView.render();
       }

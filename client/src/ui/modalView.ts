@@ -30,7 +30,7 @@ export class ModalView {
     const hh = String(gmt8.getHours()).padStart(2, '0');
     const min = String(gmt8.getMinutes()).padStart(2, '0');
     const ss = String(gmt8.getSeconds()).padStart(2, '0');
-    const timeStr = `${hh}:${min}:${ss} (GMT+8)`;
+    const timeStr = `${hh}:${min}:${ss}`;
 
     return { dateStr, timeStr };
   }

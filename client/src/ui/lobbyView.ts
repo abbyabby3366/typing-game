@@ -1,17 +1,21 @@
 import { ErrorMode } from '../game/typingEngine';
 import { soundEngine } from '../audio/soundEngine';
+import { SongTrack } from '../game/songCatalog';
+import { LyricsSelectorView } from './lyricsSelectorView';
 
 export interface LobbyConfig {
   playerName: string;
   errorMode: ErrorMode;
   category: string;
   customText: string | null;
+  selectedSong?: SongTrack | null;
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
   cyberpunk: '⚡ Cyberpunk & Matrix',
   scifi: '🪐 Sci-Fi Classics (Dune/Asimov)',
   philosophy: '🧠 AI & Philosophy (Turing)',
+  lyrics: '🎵 Lyrics Mode (24 Songs)',
   all: '🌐 All Curated Archives',
   custom: '✍️ Custom Passage...',
 };
@@ -25,7 +29,8 @@ export class LobbyView {
     difficulty: string,
     errorMode: ErrorMode,
     category: string,
-    customText: string | null
+    customText: string | null,
+    selectedSong?: SongTrack | null
   ) => void;
 
   private activeTab: 'solo' | 'multiplayer' = 'solo';
@@ -149,6 +154,9 @@ export class LobbyView {
                     <button type="button" class="cyber-dropdown-item ${this.selectedCategory === 'philosophy' ? 'active' : ''}" data-val="philosophy">
                       <span>🧠</span> AI & Philosophy (Turing)
                     </button>
+                    <button type="button" class="cyber-dropdown-item ${this.selectedCategory === 'lyrics' ? 'active' : ''}" data-val="lyrics">
+                      <span>🎵</span> Lyrics Mode (24 Songs)
+                    </button>
                     <button type="button" class="cyber-dropdown-item ${this.selectedCategory === 'all' ? 'active' : ''}" data-val="all">
                       <span>🌐</span> All Curated Archives
                     </button>
@@ -164,6 +172,8 @@ export class LobbyView {
               <label class="setting-label">CUSTOM DUEL PASSAGE</label>
               <textarea id="input-solo-custom-text" class="input-cyber" rows="2" placeholder="Type or paste custom duel passage..."></textarea>
             </div>
+
+            <div id="solo-lyrics-selector-wrapper" class="${this.selectedCategory === 'lyrics' ? '' : 'hidden'}" style="margin-top: 4px;"></div>
           </div>
 
           <button id="btn-start-solo-match" type="button" class="btn-cyber-primary btn-launch">
@@ -209,6 +219,9 @@ export class LobbyView {
                     <button type="button" class="cyber-dropdown-item" data-val="philosophy">
                       <span>🧠</span> AI & Philosophy
                     </button>
+                    <button type="button" class="cyber-dropdown-item ${this.selectedCategory === 'lyrics' ? 'active' : ''}" data-val="lyrics">
+                      <span>🎵</span> Lyrics Mode (24 Songs)
+                    </button>
                     <button type="button" class="cyber-dropdown-item" data-val="all">
                       <span>🌐</span> All Archives
                     </button>
@@ -223,6 +236,8 @@ export class LobbyView {
                 <label class="setting-label">CUSTOM TEXT</label>
                 <textarea id="input-multi-custom-text" class="input-cyber" rows="2" placeholder="Paste custom passage..."></textarea>
               </div>
+
+              <div id="multi-lyrics-selector-wrapper" class="${this.selectedCategory === 'lyrics' ? '' : 'hidden'}" style="margin-top: 4px;"></div>
 
               <button id="btn-create-room" type="button" class="btn-cyber-primary" style="margin-top: 4px;">
                 CREATE ROOM
@@ -339,17 +354,35 @@ export class LobbyView {
     setupErrorToggles('.solo-mode-btn');
     setupErrorToggles('.multi-mode-btn');
 
+    // Initialize Lyrics Selector Views
+    const soloLyricsWrap = this.container.querySelector('#solo-lyrics-selector-wrapper') as HTMLElement;
+    const multiLyricsWrap = this.container.querySelector('#multi-lyrics-selector-wrapper') as HTMLElement;
+
+    const soloLyricsSelector = new LyricsSelectorView(soloLyricsWrap);
+    const multiLyricsSelector = new LyricsSelectorView(multiLyricsWrap);
+
+    if (this.selectedCategory === 'lyrics') {
+      if (this.activeTab === 'solo') {
+        soloLyricsSelector.render();
+      } else {
+        multiLyricsSelector.render();
+      }
+    }
+
     // Fast Custom Cyber Dropdown (0ms Latency on pointerdown)
     const setupCustomDropdown = (
       triggerId: string,
       menuId: string,
       selectedLabelId: string,
-      customWrapId: string
+      customWrapId: string,
+      lyricsWrapId: string,
+      lyricsSelector: LyricsSelectorView
     ) => {
       const trigger = this.container.querySelector(triggerId) as HTMLButtonElement;
       const menu = this.container.querySelector(menuId) as HTMLElement;
       const selectedLabel = this.container.querySelector(selectedLabelId) as HTMLElement;
       const customWrap = this.container.querySelector(customWrapId) as HTMLElement;
+      const lyricsWrap = this.container.querySelector(lyricsWrapId) as HTMLElement;
 
       if (!trigger || !menu) return;
 
@@ -389,11 +422,17 @@ export class LobbyView {
             selectedLabel.textContent = CATEGORY_LABELS[val] || val;
           }
 
-          // Toggle custom text wrapper
+          // Toggle custom text wrapper & lyrics wrapper
           if (val === 'custom') {
             customWrap.classList.remove('hidden');
+            lyricsWrap.classList.add('hidden');
+          } else if (val === 'lyrics') {
+            customWrap.classList.add('hidden');
+            lyricsWrap.classList.remove('hidden');
+            lyricsSelector.render();
           } else {
             customWrap.classList.add('hidden');
+            lyricsWrap.classList.add('hidden');
           }
 
           // Close menu
@@ -410,13 +449,17 @@ export class LobbyView {
       '#dropdown-trigger-solo',
       '#dropdown-menu-solo',
       '#dropdown-selected-solo',
-      '#solo-custom-text-wrapper'
+      '#solo-custom-text-wrapper',
+      '#solo-lyrics-selector-wrapper',
+      soloLyricsSelector
     );
     setupCustomDropdown(
       '#dropdown-trigger-multi',
       '#dropdown-menu-multi',
       '#dropdown-selected-multi',
-      '#multi-custom-text-wrapper'
+      '#multi-custom-text-wrapper',
+      '#multi-lyrics-selector-wrapper',
+      multiLyricsSelector
     );
 
     // Global listener to close dropdowns when clicking outside (bound once)
@@ -437,8 +480,13 @@ export class LobbyView {
     soloBtn?.addEventListener('click', () => {
       const pilotName = nameInput.value.trim() || 'ANONYMOUS';
       localStorage.setItem('cyber_pilot_name', pilotName);
-      const custom = this.selectedCategory === 'custom' ? soloCustomText.value.trim() || null : null;
-      this.onStartBot?.(pilotName, this.selectedBotDiff, this.selectedErrorMode, this.selectedCategory, custom);
+      let custom = this.selectedCategory === 'custom' ? soloCustomText.value.trim() || null : null;
+      let activeSong: SongTrack | null = null;
+      if (this.selectedCategory === 'lyrics') {
+        activeSong = soloLyricsSelector.getSelectedSong();
+        custom = activeSong ? activeSong.lyrics : null;
+      }
+      this.onStartBot?.(pilotName, this.selectedBotDiff, this.selectedErrorMode, this.selectedCategory, custom, activeSong);
     });
 
     // Create Multiplayer room
@@ -447,12 +495,18 @@ export class LobbyView {
     createBtn?.addEventListener('click', () => {
       const pilotName = nameInput.value.trim() || 'ANONYMOUS';
       localStorage.setItem('cyber_pilot_name', pilotName);
-      const custom = this.selectedCategory === 'custom' ? multiCustomText.value.trim() || null : null;
+      let custom = this.selectedCategory === 'custom' ? multiCustomText.value.trim() || null : null;
+      let activeSong: SongTrack | null = null;
+      if (this.selectedCategory === 'lyrics') {
+        activeSong = multiLyricsSelector.getSelectedSong();
+        custom = activeSong ? activeSong.lyrics : null;
+      }
       this.onCreateRoom?.({
         playerName: pilotName,
         errorMode: this.selectedErrorMode,
         category: this.selectedCategory,
         customText: custom,
+        selectedSong: activeSong,
       });
     });
 

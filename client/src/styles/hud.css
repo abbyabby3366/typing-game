@@ -145,24 +145,50 @@
 .passage-text-flow {
   font-family: var(--font-mono);
   font-size: 1.25rem;
-  line-height: 1.85;
+  line-height: 2.2rem;
   letter-spacing: 0.03em;
-  max-height: 120px;
+  height: 6.6rem;
+  max-height: 6.6rem;
   overflow-y: hidden;
   position: relative;
   word-break: break-word;
   contain: layout style;
+  user-select: none;
+}
+
+.passage-caret {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 2.5px;
+  background: var(--cyan-primary);
+  box-shadow: 0 0 10px var(--cyan-primary), 0 0 20px var(--cyan-glow);
+  border-radius: 1px;
+  pointer-events: none;
+  z-index: 10;
+  will-change: transform;
+  transition: transform 0.075s cubic-bezier(0.2, 0.9, 0.4, 1), opacity 0.15s ease, background 0.1s ease;
+  animation: blink-caret 1s infinite;
+}
+
+.passage-caret.caret-flash {
+  background: var(--magenta-primary);
+  box-shadow: 0 0 12px var(--magenta-primary), 0 0 20px var(--magenta-glow);
 }
 
 .passage-word {
   display: inline-block;
   white-space: nowrap;
-  margin-right: 0.32em;
+  margin-right: 0.6em;
+  border-bottom: 2px solid transparent;
   padding-bottom: 2px;
+  position: relative;
+  box-sizing: border-box;
+  transition: border-color 0.12s ease;
 }
 
 .current-word-wrapper {
-  border-bottom: 2px solid rgba(0, 240, 255, 0.55);
+  border-bottom-color: rgba(0, 240, 255, 0.65);
 }
 
 .word-completed .char {
@@ -172,11 +198,16 @@
 
 .char {
   position: relative;
-  transition: color 0.1s;
+  display: inline;
+  transition: color 0.08s, text-shadow 0.08s;
 }
 
 .char-pending {
   color: #5d6e8a;
+}
+
+.char-target {
+  color: #ffffff;
 }
 
 .char-correct {
@@ -188,23 +219,12 @@
   color: #ff2255;
   background: rgba(255, 34, 85, 0.25);
   text-shadow: 0 0 8px rgba(255, 34, 85, 0.6);
-  border-bottom: 2px solid #ff2255;
+  border-radius: 2px;
 }
 
-.char-current {
-  color: #ffffff;
-  position: relative;
-}
-
-.cursor-caret {
-  display: inline-block;
-  width: 2px;
-  height: 1.25rem;
-  background: var(--cyan-primary);
-  box-shadow: 0 0 10px var(--cyan-primary);
-  vertical-align: middle;
-  animation: blink-caret 0.8s infinite;
-  margin-left: -1px;
+.char-error-flash {
+  color: #ff2255;
+  text-shadow: 0 0 10px rgba(255, 34, 85, 0.8);
 }
 
 @keyframes blink-caret {

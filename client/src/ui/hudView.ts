@@ -1,4 +1,6 @@
 import { TypingEngine, TypingStats } from '../game/typingEngine';
+import { SongTrack } from '../game/songCatalog';
+import { musicPlayer } from '../audio/musicPlayer';
 
 export interface OpponentStats {
   name: string;
@@ -13,7 +15,6 @@ interface WordMeta {
   container: HTMLElement;
   expectedWord: string;
   charSpans: HTMLElement[];
-  endCaretSpan: HTMLElement;
 }
 
 export class HudView {
@@ -22,6 +23,7 @@ export class HudView {
 
   // Cached DOM references
   private streamEl: HTMLElement | null = null;
+  private caretEl: HTMLElement | null = null;
   private typingBoxEl: HTMLElement | null = null;
   private wpmEl: HTMLElement | null = null;
   private accEl: HTMLElement | null = null;
@@ -38,9 +40,17 @@ export class HudView {
   private wordMetas: WordMeta[] = [];
   private activeWordIndex: number = -1;
   private lastScrollTop: number = 0;
+  private lastEngine: TypingEngine | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
+
+    // Window resize smoothly re-aligns floating caret
+    window.addEventListener('resize', () => {
+      if (this.lastEngine) {
+        this.updateCaretPosition(this.lastEngine);
+      }
+    });
   }
 
   public renderWaiting(roomCode: string, _isHost: boolean): void {
@@ -110,7 +120,8 @@ export class HudView {
     p2Name: string,
     passageTitle: string,
     errorMode: string,
-    words: string[]
+    words: string[],
+    activeSong: SongTrack | null = null
   ): void {
     const isStrict = errorMode === 'strict_errors';
 
@@ -130,6 +141,30 @@ export class HudView {
             <div id="tug-indicator" class="tug-clash-indicator"></div>
           </div>
         </div>
+
+        ${
+          activeSong
+            ? `
+        <!-- IN-GAME MUSIC CONTROLS FOR LYRICS MODE -->
+        <div id="hud-music-bar" class="hud-music-player">
+          <div class="hud-music-info">
+            <span class="hud-music-icon">🎵</span>
+            <div class="hud-music-meta">
+              <span class="hud-music-title">${activeSong.title}</span>
+              <span class="hud-music-artist">${activeSong.artist} &bull; ${activeSong.avgWpm} WPM</span>
+            </div>
+          </div>
+          <div class="hud-music-controls">
+            <span id="hud-music-time" class="hud-music-time">0:00 / ${Math.floor(activeSong.durationSec / 60)}:${(activeSong.durationSec % 60).toString().padStart(2, '0')}</span>
+            <button type="button" id="hud-music-toggle" class="hud-music-btn" title="Play/Pause Track">
+              ⏸️
+            </button>
+            <input type="range" id="hud-music-vol" class="hud-music-volume" min="0" max="1" step="0.05" value="${musicPlayer.getVolume()}" title="Music Volume" />
+          </div>
+        </div>
+        `
+            : ''
+        }
 
         <!-- TYPING PASSAGE CONTAINER -->
         <div id="typing-box" class="typing-box">
@@ -205,9 +240,53 @@ export class HudView {
       this.onExitMatch?.();
     });
 
+    if (activeSong) {
+      const toggleBtn = this.container.querySelector('#hud-music-toggle') as HTMLButtonElement;
+      const volInput = this.container.querySelector('#hud-music-vol') as HTMLInputElement;
+      const timeEl = this.container.querySelector('#hud-music-time') as HTMLElement;
+
+      toggleBtn?.addEventListener('click', () => {
+        if (musicPlayer.isPlaying()) {
+          musicPlayer.pause();
+          toggleBtn.textContent = '▶️';
+        } else {
+          musicPlayer.play();
+          toggleBtn.textContent = '⏸️';
+        }
+      });
+
+      volInput?.addEventListener('input', () => {
+        musicPlayer.setVolume(parseFloat(volInput.value));
+      });
+
+      musicPlayer.onTimeUpdate = (curr, dur) => {
+        if (timeEl) {
+          const currMin = Math.floor(curr / 60);
+          const currSec = Math.floor(curr % 60).toString().padStart(2, '0');
+          const durMin = Math.floor(dur / 60);
+          const durSec = Math.floor(dur % 60).toString().padStart(2, '0');
+          timeEl.textContent = `${currMin}:${currSec} / ${durMin}:${durSec}`;
+        }
+      };
+
+      musicPlayer.onStateChange = (isPlaying) => {
+        if (toggleBtn) {
+          toggleBtn.textContent = isPlaying ? '⏸️' : '▶️';
+        }
+      };
+    }
+
     // Single-pass DocumentFragment mount for the entire passage
     if (this.streamEl) {
       const fragment = document.createDocumentFragment();
+
+      // Dedicated GPU-accelerated floating caret (zero DOM reflow / zero layout shifting)
+      const caret = document.createElement('div');
+      caret.id = 'passage-caret';
+      caret.className = 'passage-caret';
+      fragment.appendChild(caret);
+      this.caretEl = caret;
+
       this.wordMetas = words.map((word) => {
         const wordContainer = document.createElement('span');
         wordContainer.className = 'passage-word';
@@ -221,17 +300,11 @@ export class HudView {
           charSpans.push(charSpan);
         }
 
-        const endCaret = document.createElement('span');
-        endCaret.className = 'char char-current hidden';
-        endCaret.innerHTML = '<span class="cursor-caret"></span>&nbsp;';
-        wordContainer.appendChild(endCaret);
-
         fragment.appendChild(wordContainer);
         return {
           container: wordContainer,
           expectedWord: word,
           charSpans,
-          endCaretSpan: endCaret,
         };
       });
 
@@ -239,6 +312,7 @@ export class HudView {
       this.streamEl.appendChild(fragment);
       this.activeWordIndex = -1;
       this.lastScrollTop = 0;
+      this.streamEl.scrollTop = 0;
     }
   }
 
@@ -260,19 +334,81 @@ export class HudView {
     }
   }
 
-  // Highly optimized incremental DOM update: updates only active word and caret
-  public updateTypingDisplay(engine: TypingEngine): void {
-    if (!this.streamEl || this.wordMetas.length === 0) return;
+  // Computes pixel bounding offset of target relative to stream container
+  private getElementRelativePos(target: HTMLElement): { left: number; top: number; width: number; height: number } {
+    let left = 0;
+    let top = 0;
+    const width = target.offsetWidth;
+    const height = target.offsetHeight;
+
+    let current: HTMLElement | null = target;
+    while (current && current !== this.streamEl) {
+      left += current.offsetLeft;
+      top += current.offsetTop;
+      current = current.offsetParent as HTMLElement | null;
+    }
+    return { left, top, width, height };
+  }
+
+  // Updates floating smooth caret position without touching any character DOM or innerHTML
+  private updateCaretPosition(engine: TypingEngine): void {
+    if (!this.caretEl || this.wordMetas.length === 0) return;
 
     const currentWordIdx = engine.currentWordIndex;
     const buffer = engine.typedBuffer;
 
-    // Transition word container when active word changes
+    if (currentWordIdx < this.wordMetas.length) {
+      const meta = this.wordMetas[currentWordIdx];
+      const charCount = meta.charSpans.length;
+      if (charCount === 0) return;
+
+      let caretX = 0;
+      let caretY = 0;
+      let caretH = 24;
+
+      if (buffer.length < charCount) {
+        const targetSpan = meta.charSpans[buffer.length];
+        const pos = this.getElementRelativePos(targetSpan);
+        caretX = pos.left;
+        caretY = pos.top + 4;
+        caretH = Math.max(18, pos.height - 8);
+      } else {
+        // Word is fully typed, waiting for Space: caret rests cleanly right after the word's last char
+        const lastSpan = meta.charSpans[charCount - 1];
+        const pos = this.getElementRelativePos(lastSpan);
+        caretX = pos.left + pos.width;
+        caretY = pos.top + 4;
+        caretH = Math.max(18, pos.height - 8);
+      }
+
+      this.caretEl.style.transform = `translate3d(${caretX}px, ${caretY}px, 0)`;
+      this.caretEl.style.height = `${caretH}px`;
+      this.caretEl.style.opacity = '1';
+
+      if (engine.errorFlash) {
+        this.caretEl.classList.add('caret-flash');
+      } else {
+        this.caretEl.classList.remove('caret-flash');
+      }
+    } else {
+      // Completed all words in passage
+      this.caretEl.style.opacity = '0';
+    }
+  }
+
+  // Rock-solid incremental typing update: zero layout shift, zero horizontal text jumping
+  public updateTypingDisplay(engine: TypingEngine): void {
+    if (!this.streamEl || this.wordMetas.length === 0) return;
+    this.lastEngine = engine;
+
+    const currentWordIdx = engine.currentWordIndex;
+    const buffer = engine.typedBuffer;
+
+    // Transition active word container
     if (currentWordIdx !== this.activeWordIndex) {
       if (this.activeWordIndex >= 0 && this.activeWordIndex < this.wordMetas.length) {
         const prev = this.wordMetas[this.activeWordIndex];
         prev.container.className = 'passage-word word-completed';
-        prev.endCaretSpan.classList.add('hidden');
         for (const cs of prev.charSpans) {
           cs.className = 'char char-correct';
         }
@@ -284,19 +420,23 @@ export class HudView {
         const activeMeta = this.wordMetas[currentWordIdx];
         activeMeta.container.className = 'passage-word current-word-wrapper';
 
-        // Check if active word is on a new line and smooth-scroll the stream
-        const containerTop = activeMeta.container.offsetTop;
-        if (containerTop - this.streamEl.scrollTop > 56 || containerTop < this.streamEl.scrollTop) {
-          const target = Math.max(0, containerTop - 18);
-          if (target !== this.lastScrollTop) {
-            this.lastScrollTop = target;
-            this.streamEl.scrollTo({ top: target, behavior: 'smooth' });
-          }
+        // Consistent line-by-line scrolling: keeps the active line in comfortable center view
+        const firstTop = this.wordMetas[0].container.offsetTop;
+        const activeTop = activeMeta.container.offsetTop;
+        const lineHeight = activeMeta.container.offsetHeight || 35;
+        const lineDiff = activeTop - firstTop;
+        const lineIndex = Math.round(lineDiff / lineHeight);
+
+        // Lines 0 and 1 stay at scrollTop = 0. Line 2+ scrolls up by 1 line height so active line is always middle row
+        const targetScroll = lineIndex >= 2 ? Math.round((lineIndex - 1) * lineHeight) : 0;
+        if (targetScroll !== this.lastScrollTop) {
+          this.lastScrollTop = targetScroll;
+          this.streamEl.scrollTo({ top: targetScroll, behavior: 'smooth' });
         }
       }
     }
 
-    // Incremental character update strictly inside the active word
+    // Incremental character styling strictly inside active word
     if (currentWordIdx < this.wordMetas.length) {
       const meta = this.wordMetas[currentWordIdx];
       const word = meta.expectedWord;
@@ -307,26 +447,16 @@ export class HudView {
         if (i < buffer.length) {
           const isCorrect = buffer[i] === word[i];
           span.className = `char ${isCorrect ? 'char-correct' : 'char-error'}`;
-          span.textContent = word[i];
         } else if (i === buffer.length) {
-          const flash = engine.errorFlash ? ' char-error' : '';
-          span.className = `char char-current${flash}`;
-          span.innerHTML = `<span class="cursor-caret"></span>${word[i]}`;
+          span.className = engine.errorFlash ? 'char char-error-flash' : 'char char-target';
         } else {
           span.className = 'char char-pending';
-          span.textContent = word[i];
         }
       }
-
-      // Word fully typed: show trailing caret waiting for space
-      if (buffer.length >= word.length) {
-        const flash = engine.errorFlash ? ' char-error' : '';
-        meta.endCaretSpan.className = `char char-current${flash}`;
-        meta.endCaretSpan.classList.remove('hidden');
-      } else {
-        meta.endCaretSpan.classList.add('hidden');
-      }
     }
+
+    // Reposition floating caret smoothly
+    this.updateCaretPosition(engine);
 
     // Overheat shake
     if (this.typingBoxEl) {
