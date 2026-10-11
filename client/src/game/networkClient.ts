@@ -32,6 +32,8 @@ export class NetworkClient {
   public status: ConnectionStatus = 'disconnected';
   private reconnectTimer: number | null = null;
   private reconnectAttempts = 0;
+  // Errors are surfaced once per outage rather than on every failed send or retry
+  private outageReported = false;
 
   public onMessage?: (msg: ServerMsg) => void;
   public onStatusChange?: (status: ConnectionStatus) => void;
@@ -57,6 +59,7 @@ export class NetworkClient {
 
       this.ws.onopen = () => {
         this.reconnectAttempts = 0;
+        this.outageReported = false;
         this.setStatus('connected');
         if (this.reconnectTimer) {
           clearTimeout(this.reconnectTimer);
@@ -75,18 +78,25 @@ export class NetworkClient {
 
       this.ws.onclose = () => {
         this.setStatus('disconnected');
+        this.reportOutage();
         this.scheduleReconnect();
       };
 
       this.ws.onerror = () => {
         this.setStatus('disconnected');
-        this.onError?.('Network connection failed. Ensure Rust server is running on port 4000.');
+        this.reportOutage();
       };
     } catch (e) {
       this.setStatus('disconnected');
-      this.onError?.('Failed to initialize WebSocket client.');
+      this.reportOutage();
       this.scheduleReconnect();
     }
+  }
+
+  private reportOutage(): void {
+    if (this.outageReported) return;
+    this.outageReported = true;
+    this.onError?.('Lost connection to the arena server. Reconnecting...');
   }
 
   private scheduleReconnect(): void {
@@ -109,7 +119,10 @@ export class NetworkClient {
       this.ws.send(JSON.stringify(msg));
       return true;
     } else {
-      this.onError?.('Cannot send message: Not connected to server.');
+      if (!this.outageReported) {
+        this.outageReported = true;
+        this.onError?.('Not connected to the arena server yet. Reconnecting...');
+      }
       return false;
     }
   }

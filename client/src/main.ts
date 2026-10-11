@@ -441,12 +441,12 @@ class App {
       musicPlayer.loadTrack(this.activeSong.audioUrl, this.activeSong.title, this.activeSong.artist);
     }
 
-    // Countdown timer
+    // Countdown timer: first tick renders immediately so "3" shows without a 1s dead gap
     let count = countdown;
     if (this.countdownTimer !== null) {
       clearInterval(this.countdownTimer);
     }
-    this.countdownTimer = window.setInterval(() => {
+    const tick = () => {
       this.hudView.renderCountdown(count);
       soundEngine.playCountdownBeep(count === 0);
       if (count <= 0) {
@@ -465,7 +465,9 @@ class App {
         }
       }
       count--;
-    }, 1000);
+    };
+    this.countdownTimer = window.setInterval(tick, 1000);
+    tick();
   }
 
   private handleWordFired(payload: {
@@ -566,11 +568,9 @@ class App {
   private checkUrlParams(): void {
     const roomParam = new URLSearchParams(window.location.search).get('room');
     if (roomParam && roomParam.trim()) {
-      let code = roomParam.trim().toUpperCase();
-      if (code.startsWith('BOT-')) {
-        code = code.replace(/^BOT-/, '');
-        this.updateUrlRoomCode(code);
-      }
+      // Room codes are short alphanumerics; drop anything else a crafted link might carry
+      const code = roomParam.trim().toUpperCase().replace(/^BOT-/, '').replace(/[^A-Z0-9]/g, '').slice(0, 10);
+      if (code !== roomParam) this.updateUrlRoomCode(code);
       this.lobbyView.render(code);
       return;
     }
@@ -588,6 +588,10 @@ class App {
     showCyberToast(this.toastContainer, message, isError);
   }
 }
+
+// Warm up the fonts the projectile canvas draws with; canvas text silently falls back if they aren't loaded yet
+document.fonts?.load('bold 54px "Orbitron"');
+document.fonts?.load('bold 22px "JetBrains Mono"');
 
 // Mount Cyber Clash Application
 new App();

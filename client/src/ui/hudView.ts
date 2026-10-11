@@ -2,6 +2,7 @@ import { TypingEngine, TypingStats } from '../game/typingEngine';
 import { SongTrack } from '../game/songCatalog';
 import { musicPlayer } from '../audio/musicPlayer';
 import { ICONS } from './icons';
+import { escapeHtml } from './escapeHtml';
 
 export interface OpponentStats {
   name: string;
@@ -11,6 +12,14 @@ export interface OpponentStats {
   totalWords: number;
   combo: number;
 }
+
+interface CaretStop {
+  x: number;
+  y: number;
+  h: number;
+}
+
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
 interface WordMeta {
   container: HTMLElement;
@@ -36,22 +45,34 @@ export class HudView {
   private tugP2Bar: HTMLElement | null = null;
   private tugIndicator: HTMLElement | null = null;
   private tugLabel: HTMLElement | null = null;
+  private zenFillEl: HTMLElement | null = null;
+  private zenPctEl: HTMLElement | null = null;
+  private zenWordsEl: HTMLElement | null = null;
+  private zenStatEl: HTMLElement | null = null;
+  private countdownEl: HTMLElement | null = null;
 
   // Incremental word tracking
   private wordMetas: WordMeta[] = [];
   private activeWordIndex: number = -1;
   private lastScrollTop: number = 0;
   private lastEngine: TypingEngine | null = null;
+  // Caret positions for the active word (one per char, plus one after the last char).
+  // Measured once per word so keystrokes don't force a layout read each time.
+  private caretStops: CaretStop[] | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
 
     // Window resize smoothly re-aligns floating caret
-    window.addEventListener('resize', () => {
+    const remeasureCaret = () => {
+      this.caretStops = null;
       if (this.lastEngine) {
         this.updateCaretPosition(this.lastEngine);
       }
-    });
+    };
+    window.addEventListener('resize', remeasureCaret);
+    // Late-loading web fonts change glyph widths, invalidating measured positions
+    document.fonts?.addEventListener('loadingdone', remeasureCaret);
   }
 
   public renderWaiting(roomCode: string, _isHost: boolean): void {
@@ -101,17 +122,21 @@ export class HudView {
   }
 
   public renderCountdown(seconds: number): void {
-    const existing = document.querySelector('.countdown-overlay');
-    if (existing) existing.remove();
+    if (!this.countdownEl || !this.countdownEl.isConnected) {
+      this.countdownEl = document.createElement('div');
+      this.countdownEl.className = 'countdown-overlay';
+      document.body.appendChild(this.countdownEl);
+    }
 
-    const overlay = document.createElement('div');
-    overlay.className = 'countdown-overlay';
-    overlay.innerHTML = `
-      <div class="countdown-number">${seconds > 0 ? seconds : 'ENGAGE!'}</div>
-    `;
-    document.body.appendChild(overlay);
+    // A fresh number node per tick restarts its zoom animation
+    const num = document.createElement('div');
+    num.className = 'countdown-number';
+    num.textContent = seconds > 0 ? `${seconds}` : 'ENGAGE!';
+    this.countdownEl.replaceChildren(num);
 
     if (seconds <= 0) {
+      const overlay = this.countdownEl;
+      this.countdownEl = null;
       setTimeout(() => overlay.remove(), 700);
     }
   }
@@ -126,6 +151,11 @@ export class HudView {
     isZenMode: boolean = false
   ): void {
     const isStrict = errorMode === 'strict_errors';
+    p1Name = escapeHtml(p1Name);
+    p2Name = escapeHtml(p2Name);
+    passageTitle = escapeHtml(passageTitle);
+    const songTitle = activeSong ? escapeHtml(activeSong.title) : '';
+    const songArtist = activeSong ? escapeHtml(activeSong.artist) : '';
 
     this.container.innerHTML = `
       <div class="hud-container">
@@ -175,8 +205,8 @@ export class HudView {
           <div class="hud-music-info">
             <span class="hud-music-icon" style="display: flex; align-items: center;">${ICONS.music(14)}</span>
             <div class="hud-music-meta">
-              <span class="hud-music-title">${activeSong.title}</span>
-              <span class="hud-music-artist">${activeSong.artist} &bull; ${activeSong.avgWpm} WPM</span>
+              <span class="hud-music-title">${songTitle}</span>
+              <span class="hud-music-artist">${songArtist} &bull; ${activeSong.avgWpm} WPM</span>
             </div>
           </div>
           <div class="hud-music-controls">
@@ -275,6 +305,10 @@ export class HudView {
     this.tugP2Bar = this.container.querySelector('#tug-p2-bar');
     this.tugIndicator = this.container.querySelector('#tug-indicator');
     this.tugLabel = this.container.querySelector('#tug-territory-text');
+    this.zenFillEl = this.container.querySelector('#zen-progress-fill');
+    this.zenPctEl = this.container.querySelector('#zen-progress-percent');
+    this.zenWordsEl = this.container.querySelector('#zen-progress-words');
+    this.zenStatEl = this.container.querySelector('#stat-zen-words');
 
     const leaveBtn = this.container.querySelector('#btn-leave-match');
     leaveBtn?.addEventListener('click', () => {
@@ -352,6 +386,7 @@ export class HudView {
       this.streamEl.innerHTML = '';
       this.streamEl.appendChild(fragment);
       this.activeWordIndex = -1;
+      this.caretStops = null;
       this.lastScrollTop = 0;
       this.streamEl.scrollTop = 0;
     }
@@ -391,6 +426,21 @@ export class HudView {
     return { left, top, width, height };
   }
 
+  private measureCaretStops(meta: WordMeta): CaretStop[] {
+    const toStop = (left: number, pos: { top: number; height: number }): CaretStop => ({
+      x: left,
+      y: pos.top + 4,
+      h: Math.max(18, pos.height - 8),
+    });
+    const stops = meta.charSpans.map((span) => {
+      const pos = this.getElementRelativePos(span);
+      return toStop(pos.left, pos);
+    });
+    const last = this.getElementRelativePos(meta.charSpans[meta.charSpans.length - 1]);
+    stops.push(toStop(last.left + last.width, last));
+    return stops;
+  }
+
   // Updates floating smooth caret position without touching any character DOM or innerHTML
   private updateCaretPosition(engine: TypingEngine): void {
     if (!this.caretEl || this.wordMetas.length === 0) return;
@@ -403,27 +453,14 @@ export class HudView {
       const charCount = meta.charSpans.length;
       if (charCount === 0) return;
 
-      let caretX = 0;
-      let caretY = 0;
-      let caretH = 24;
-
-      if (buffer.length < charCount) {
-        const targetSpan = meta.charSpans[buffer.length];
-        const pos = this.getElementRelativePos(targetSpan);
-        caretX = pos.left;
-        caretY = pos.top + 4;
-        caretH = Math.max(18, pos.height - 8);
-      } else {
-        // Word is fully typed, waiting for Space: caret rests cleanly right after the word's last char
-        const lastSpan = meta.charSpans[charCount - 1];
-        const pos = this.getElementRelativePos(lastSpan);
-        caretX = pos.left + pos.width;
-        caretY = pos.top + 4;
-        caretH = Math.max(18, pos.height - 8);
+      if (!this.caretStops) {
+        this.caretStops = this.measureCaretStops(meta);
       }
+      // Once the word is fully typed (waiting for Space) the caret rests right after its last char
+      const stop = this.caretStops[Math.min(buffer.length, charCount)];
 
-      this.caretEl.style.transform = `translate3d(${caretX}px, ${caretY}px, 0)`;
-      this.caretEl.style.height = `${caretH}px`;
+      this.caretEl.style.transform = `translate3d(${stop.x}px, ${stop.y}px, 0)`;
+      this.caretEl.style.height = `${stop.h}px`;
       this.caretEl.style.opacity = '1';
 
       if (engine.errorFlash) {
@@ -468,6 +505,7 @@ export class HudView {
       }
 
       this.activeWordIndex = currentWordIdx;
+      this.caretStops = null;
 
       if (currentWordIdx < this.wordMetas.length) {
         const activeMeta = this.wordMetas[currentWordIdx];
@@ -484,7 +522,7 @@ export class HudView {
         const targetScroll = lineIndex >= 2 ? Math.round((lineIndex - 1) * lineHeight) : 0;
         if (targetScroll !== this.lastScrollTop) {
           this.lastScrollTop = targetScroll;
-          this.streamEl.scrollTo({ top: targetScroll, behavior: 'smooth' });
+          this.streamEl.scrollTo({ top: targetScroll, behavior: reducedMotion.matches ? 'auto' : 'smooth' });
         }
       }
     }
@@ -542,13 +580,9 @@ export class HudView {
 
   public updateZenProgress(wordsCompleted: number, totalWords: number): void {
     const pct = totalWords > 0 ? Math.min(100, Math.round((wordsCompleted / totalWords) * 100)) : 0;
-    const fill = this.container.querySelector('#zen-progress-fill') as HTMLElement;
-    const pctEl = this.container.querySelector('#zen-progress-percent');
-    const wordsEl = this.container.querySelector('#zen-progress-words');
-    const zenStat = this.container.querySelector('#stat-zen-words');
-    if (fill) fill.style.width = `${pct}%`;
-    if (pctEl) pctEl.textContent = `${pct}%`;
-    if (wordsEl) wordsEl.textContent = `${wordsCompleted} / ${totalWords} WORDS`;
-    if (zenStat) zenStat.textContent = `${wordsCompleted} / ${totalWords}`;
+    if (this.zenFillEl) this.zenFillEl.style.width = `${pct}%`;
+    if (this.zenPctEl) this.zenPctEl.textContent = `${pct}%`;
+    if (this.zenWordsEl) this.zenWordsEl.textContent = `${wordsCompleted} / ${totalWords} WORDS`;
+    if (this.zenStatEl) this.zenStatEl.textContent = `${wordsCompleted} / ${totalWords}`;
   }
 }

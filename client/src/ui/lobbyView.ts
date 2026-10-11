@@ -1,6 +1,7 @@
 import { ErrorMode } from '../game/typingEngine';
 import { soundEngine } from '../audio/soundEngine';
 import { SongTrack } from '../game/songCatalog';
+import { escapeHtml } from './escapeHtml';
 import { LyricsSelectorView } from './lyricsSelectorView';
 import {
   CATEGORY_LABELS,
@@ -78,7 +79,7 @@ export class LobbyView {
           </div>
           <div class="pilot-capsule" title="Click to edit name">
             <span class="pilot-capsule-tag">NAME</span>
-            <input id="input-pilot-name" type="text" class="pilot-capsule-input" value="${savedName}" maxlength="16" placeholder="NAME" />
+            <input id="input-pilot-name" type="text" class="pilot-capsule-input" value="${escapeHtml(savedName)}" maxlength="16" placeholder="NAME" />
           </div>
         </div>
 

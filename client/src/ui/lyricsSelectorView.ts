@@ -2,6 +2,7 @@ import { SONG_CATALOG, SongTrack } from '../game/songCatalog';
 import { musicPlayer } from '../audio/musicPlayer';
 import { soundEngine } from '../audio/soundEngine';
 import { ICONS } from './icons';
+import { escapeHtml } from './escapeHtml';
 
 export class LyricsSelectorView {
   private container: HTMLElement;
@@ -116,7 +117,7 @@ export class LyricsSelectorView {
           <div class="custom-song-header">
             <label class="custom-file-label" for="input-custom-song-file">
               <span style="display: flex; align-items: center;">${ICONS.folder(14)}</span>
-              <span>${this.customSong ? `Loaded: ${this.customSong.title}` : 'Upload Custom MP3 / Audio File'}</span>
+              <span>${this.customSong ? `Loaded: ${escapeHtml(this.customSong.title)}` : 'Upload Custom MP3 / Audio File'}</span>
             </label>
             <input type="file" id="input-custom-song-file" accept="audio/*" style="display: none;" />
             ${

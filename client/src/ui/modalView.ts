@@ -1,4 +1,5 @@
 import confetti from 'canvas-confetti';
+import { escapeHtml } from './escapeHtml';
 
 export interface GameOverData {
   isWinner: boolean;
@@ -114,8 +115,8 @@ export class ModalView {
             <thead>
               <tr style="border-bottom: 1px solid var(--border-subtle); color: var(--text-muted); font-size: 0.75rem;">
                 <th style="padding: 8px;">METRIC</th>
-                <th style="padding: 8px; color: var(--cyan-primary);">${data.p1Stats.name}</th>
-                <th style="padding: 8px; color: var(--magenta-primary);">${data.p2Stats.name}</th>
+                <th style="padding: 8px; color: var(--cyan-primary);">${escapeHtml(data.p1Stats.name)}</th>
+                <th style="padding: 8px; color: var(--magenta-primary);">${escapeHtml(data.p2Stats.name)}</th>
               </tr>
             </thead>
             <tbody>

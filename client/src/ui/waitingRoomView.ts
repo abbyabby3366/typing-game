@@ -5,6 +5,7 @@ import { SongTrack } from '../game/songCatalog';
 import { LyricsSelectorView } from './lyricsSelectorView';
 import { CATEGORY_LABELS, ERROR_TOLERANCE_TOOLTIP_HTML } from './lobbyPanels';
 import { ICONS } from './icons';
+import { escapeHtml } from './escapeHtml';
 
 export interface RoomSettingsConfig {
   errorMode: ErrorMode;
@@ -66,7 +67,7 @@ export class WaitingRoomView {
           </div>
           <div class="pilot-capsule">
             <span class="pilot-capsule-tag">HOST</span>
-            <span style="color: #ffffff; font-family: var(--font-mono); font-size: 0.88rem; font-weight: 700;">${savedName}</span>
+            <span style="color: #ffffff; font-family: var(--font-mono); font-size: 0.88rem; font-weight: 700;">${escapeHtml(savedName)}</span>
           </div>
         </div>
 
@@ -186,7 +187,7 @@ export class WaitingRoomView {
     if (statusEl) {
       statusEl.innerHTML = `
         <span class="status-dot" style="background: #00ffaa; box-shadow: 0 0 10px #00ffaa;"></span>
-        <span style="color: #00ffaa; font-weight: 700;">CHALLENGER ${opponentName.toUpperCase()} ENGAGED! INITIATING ARENA CONDUIT...</span>
+        <span style="color: #00ffaa; font-weight: 700;">CHALLENGER ${escapeHtml(opponentName.toUpperCase())} ENGAGED! INITIATING ARENA CONDUIT...</span>
       `;
     }
   }

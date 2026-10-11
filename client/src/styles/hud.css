@@ -413,7 +413,7 @@
   font-weight: 900;
   color: var(--cyan-primary);
   text-shadow: 0 0 40px var(--cyan-glow), 0 0 80px var(--cyan-primary);
-  animation: zoom-out 0.9s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+  animation: zoom-out 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 @keyframes zoom-out {
@@ -469,9 +469,7 @@
   display: flex;
   align-items: center;
   gap: 16px;
-  background: rgba(6, 12, 26, 0.94);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: rgba(6, 12, 26, 0.96);
   border: 1px solid var(--esc-accent);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.75), 0 0 24px var(--esc-glow);
   border-radius: 8px;

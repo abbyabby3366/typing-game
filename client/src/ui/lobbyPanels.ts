@@ -1,5 +1,6 @@
 import { ErrorMode } from '../game/typingEngine';
 import { ICONS } from './icons';
+import { escapeHtml } from './escapeHtml';
 
 export const CATEGORY_LABELS: Record<string, string> = {
   cyberpunk: 'Cyberpunk & Matrix',
@@ -308,7 +309,7 @@ export function renderMultiPanel(isActive: boolean, initialRoomCode: string = ''
             </p>
             <div class="setting-row">
               <label class="setting-label">ROOM ACCESS CODE</label>
-              <input id="input-join-room-code" type="text" class="input-cyber" value="${displayRoomCode}" placeholder="E.G. 7K9QM" maxlength="10" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" style="text-transform: uppercase; font-size: 1.15rem; letter-spacing: 0.18em; font-weight: 800; text-align: center;" />
+              <input id="input-join-room-code" type="text" class="input-cyber" value="${escapeHtml(displayRoomCode)}" placeholder="E.G. 7K9QM" maxlength="10" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" style="text-transform: uppercase; font-size: 1.15rem; letter-spacing: 0.18em; font-weight: 800; text-align: center;" />
             </div>
           </div>
 

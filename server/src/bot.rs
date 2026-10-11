@@ -11,8 +11,8 @@ pub fn spawn_bot_task(
     custom_wpm: Option<u32>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        // Initial match countdown wait (3.5s)
-        tokio::time::sleep(Duration::from_millis(3500)).await;
+        // Wait out the 3s client countdown (3 → 2 → 1 → ENGAGE)
+        tokio::time::sleep(Duration::from_millis(3000)).await;
 
         let (target_wpm, error_rate) = match difficulty {
             BotDifficulty::Easy => (38.0, 0.08),

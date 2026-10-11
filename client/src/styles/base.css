@@ -121,9 +121,8 @@ body {
   z-index: 100;
   padding: 10px 24px;
   margin-bottom: 12px;
-  background: rgba(3, 6, 15, 0.94);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  /* Near-opaque fill instead of backdrop-filter: a blur over the live WebGL canvas re-runs every frame */
+  background: rgba(3, 6, 15, 0.96);
   border-bottom: 1px solid rgba(0, 240, 255, 0.2);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
 }
@@ -347,6 +346,10 @@ body {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+  /* Its keyframes end at opacity 0, so collapsing the animation would hide the countdown entirely */
+  .countdown-number {
+    animation: none !important;
   }
 }
 

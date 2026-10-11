@@ -8,6 +8,7 @@ use axum::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         State,
     },
+    http::{header, HeaderValue},
     response::IntoResponse,
     routing::get,
     Json, Router,
@@ -17,8 +18,20 @@ use protocol::*;
 use room::*;
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 use tokio::sync::{mpsc, RwLock};
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::{
+    compression::{
+        predicate::{DefaultPredicate, NotForContentType, Predicate},
+        Compression,
+    },
+    cors::{Any, CorsLayer},
+    services::ServeDir,
+    set_header::SetResponseHeader,
+};
 use uuid::Uuid;
+
+const MAX_NAME_CHARS: usize = 16;
+const MAX_CUSTOM_TEXT_CHARS: usize = 20_000;
+const MAX_WS_MESSAGE_BYTES: usize = 128 * 1024;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -53,7 +66,22 @@ async fn main() {
     // Serve static client files if directory exists (for single-container production deployment)
     let static_dir = std::path::Path::new("client/dist");
     let app = if static_dir.exists() {
-        app.fallback_service(tower_http::services::ServeDir::new(static_dir))
+        // Compress text assets on the fly, but never audio (already compressed, and breaks range requests)
+        let compress = DefaultPredicate::new().and(NotForContentType::const_new("audio/"));
+        // Vite emits content-hashed filenames under /assets, so they can be cached forever
+        let assets = SetResponseHeader::overriding(
+            Compression::new(ServeDir::new(static_dir.join("assets"))).compress_when(compress.clone()),
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("public, max-age=31536000, immutable"),
+        );
+        let audio = SetResponseHeader::overriding(
+            ServeDir::new(static_dir.join("audio")),
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("public, max-age=604800"),
+        );
+        app.nest_service("/assets", assets)
+            .nest_service("/audio", audio)
+            .fallback_service(Compression::new(ServeDir::new(static_dir)).compress_when(compress))
     } else {
         app
     };
@@ -88,7 +116,63 @@ async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_socket(socket, state))
+    ws.max_message_size(MAX_WS_MESSAGE_BYTES)
+        .on_upgrade(move |socket| handle_socket(socket, state))
+}
+
+/// Strips control characters, trims and caps a player-supplied display name.
+fn sanitize_name(raw: &str) -> String {
+    let name: String = raw.chars().filter(|c| !c.is_control()).take(MAX_NAME_CHARS).collect();
+    let name = name.trim();
+    if name.is_empty() {
+        "PILOT".to_string()
+    } else {
+        name.to_string()
+    }
+}
+
+fn clamp_custom_text(text: Option<String>) -> Option<String> {
+    text.map(|t| {
+        if t.chars().count() > MAX_CUSTOM_TEXT_CHARS {
+            t.chars().take(MAX_CUSTOM_TEXT_CHARS).collect()
+        } else {
+            t
+        }
+    })
+}
+
+/// Detaches this connection from its current room (if any): stops the bot, notifies the
+/// opponent, and drops the room once no human player remains. The socket stays usable.
+async fn leave_room(
+    state: &AppState,
+    current_room_code: &mut Option<String>,
+    current_room_arc: &mut Option<Arc<RwLock<Room>>>,
+    player_role: &mut Option<PlayerRole>,
+) {
+    let (Some(code), Some(room_arc), Some(role)) =
+        (current_room_code.take(), current_room_arc.take(), player_role.take())
+    else {
+        return;
+    };
+
+    let should_remove = {
+        let mut room = room_arc.write().await;
+        if let Some(h) = room.bot_abort_handle.take() {
+            h.abort();
+        }
+        room.state = RoomState::Finished;
+        match role {
+            PlayerRole::Player1 => room.p1 = None,
+            PlayerRole::Player2 => room.p2 = None,
+        }
+        room.broadcast(ServerMsg::OpponentLeft);
+        // Bot matches keep the bot in the p2 slot, so they are empty once p1 leaves
+        room.p1.is_none() && (room.p2.is_none() || room.is_bot_match)
+    };
+
+    if should_remove {
+        state.rooms.write().await.remove(&code);
+    }
 }
 
 async fn handle_socket(socket: WebSocket, state: AppState) {
@@ -145,17 +229,18 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                 category,
                 custom_text,
             } => {
+                leave_room(&state, &mut current_room_code, &mut current_room_arc, &mut player_role).await;
                 let room_code = generate_room_code();
                 let settings = GameSettings {
                     error_mode,
                     category,
-                    custom_text,
+                    custom_text: clamp_custom_text(custom_text),
                     max_push_distance: 1.0,
                 };
 
                 let session = PlayerSession {
                     id: player_id.clone(),
-                    name: player_name,
+                    name: sanitize_name(&player_name),
                     role: PlayerRole::Player1,
                     tx: tx.clone(),
                 };
@@ -190,6 +275,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                     if room.state == RoomState::WaitingForOpponent {
                         room.settings.error_mode = error_mode;
                         room.settings.category = category.clone();
+                        let custom_text = clamp_custom_text(custom_text);
                         room.settings.custom_text = custom_text.clone();
                         let (title, text, words) = passages::get_passage_by_category(&category, custom_text.as_deref());
                         room.passage_title = title;
@@ -211,17 +297,18 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                 category,
                 custom_text,
             } => {
+                leave_room(&state, &mut current_room_code, &mut current_room_arc, &mut player_role).await;
                 let room_code = generate_room_code();
                 let settings = GameSettings {
                     error_mode,
                     category,
-                    custom_text,
+                    custom_text: clamp_custom_text(custom_text),
                     max_push_distance: 1.0,
                 };
 
                 let session = PlayerSession {
                     id: player_id.clone(),
-                    name: player_name,
+                    name: sanitize_name(&player_name),
                     role: PlayerRole::Player1,
                     tx: tx.clone(),
                 };
@@ -275,7 +362,9 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                 room_code,
                 player_name,
             } => {
-                let code_upper = room_code.to_uppercase();
+                leave_room(&state, &mut current_room_code, &mut current_room_arc, &mut player_role).await;
+                let player_name = sanitize_name(&player_name);
+                let code_upper = room_code.trim().to_uppercase();
                 let room_opt = {
                     let rooms = state.rooms.read().await;
                     rooms.get(&code_upper).cloned()
@@ -428,39 +517,13 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
             }
 
             ClientMsg::LeaveRoom => {
-                break;
+                leave_room(&state, &mut current_room_code, &mut current_room_arc, &mut player_role).await;
             }
         }
     }
 
     // Clean up room on player disconnect
-    if let (Some(ref code), Some(ref room_arc), Some(role)) = (&current_room_code, &current_room_arc, player_role) {
-        let mut should_remove = false;
-        {
-            let mut room = room_arc.write().await;
-            if let Some(h) = room.bot_abort_handle.take() {
-                h.abort();
-            }
-            match role {
-                PlayerRole::Player1 => {
-                    room.p1 = None;
-                    room.broadcast(ServerMsg::OpponentLeft);
-                }
-                PlayerRole::Player2 => {
-                    room.p2 = None;
-                    room.broadcast(ServerMsg::OpponentLeft);
-                }
-            }
-            if room.p1.is_none() && room.p2.is_none() {
-                should_remove = true;
-            }
-        }
-
-        if should_remove {
-            let mut rooms = state.rooms.write().await;
-            rooms.remove(code);
-        }
-    }
-
-    let _ = send_task.await;
+    leave_room(&state, &mut current_room_code, &mut current_room_arc, &mut player_role).await;
+    // Room sessions held clones of `tx`, so the sender task may never see the channel close
+    send_task.abort();
 }

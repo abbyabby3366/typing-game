@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
 export interface SceneContext {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
@@ -264,6 +266,7 @@ export class SceneManager {
   }
 
   public triggerShake(intensity: number = 0.5): void {
+    if (reducedMotion.matches) return;
     this.cameraShake = Math.min(this.cameraShake + intensity, 1.2);
   }
 

@@ -10,23 +10,23 @@ COPY client/ ./
 RUN npm run build
 
 # Stage 2: Build the Rust Axum backend
-FROM rust:1.80-slim-bullseye AS server-builder
+FROM rust:1-slim-bookworm AS server-builder
 WORKDIR /app
 
 # Create a skeleton to cache dependencies
 RUN cargo new --bin server
 WORKDIR /app/server
-COPY server/Cargo.toml ./
-RUN cargo build --release
+COPY server/Cargo.toml server/Cargo.lock ./
+RUN cargo build --release --locked
 RUN rm src/*.rs
 
 # Copy actual server source code
 COPY server/src ./src
 # Touch main.rs to force cargo to rebuild the binary
-RUN touch src/main.rs && cargo build --release
+RUN touch src/main.rs && cargo build --release --locked
 
 # Stage 3: Minimal production runtime
-FROM debian:bullseye-slim AS runner
+FROM debian:bookworm-slim AS runner
 WORKDIR /app
 
 # Install certificates and runtime essentials
