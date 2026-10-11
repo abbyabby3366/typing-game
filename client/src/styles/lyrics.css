@@ -74,12 +74,12 @@
   box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
 }
 
-/* Scrollable Song Grid */
+/* Scrollable Song List (Single Column) */
 .song-cards-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 8px;
-  max-height: 220px;
+  max-height: 250px;
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;

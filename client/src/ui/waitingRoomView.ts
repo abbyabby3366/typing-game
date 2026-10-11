@@ -3,7 +3,7 @@ import { soundEngine } from '../audio/soundEngine';
 import { musicPlayer } from '../audio/musicPlayer';
 import { SongTrack } from '../game/songCatalog';
 import { LyricsSelectorView } from './lyricsSelectorView';
-import { CATEGORY_LABELS } from './lobbyPanels';
+import { CATEGORY_LABELS, ERROR_TOLERANCE_TOOLTIP_HTML } from './lobbyPanels';
 import { ICONS } from './icons';
 
 export interface RoomSettingsConfig {
@@ -112,7 +112,7 @@ export class WaitingRoomView {
           <div class="config-grid-2col">
             <!-- Error Tolerance -->
             <div class="setting-row">
-              <label class="setting-label">ERROR TOLERANCE</label>
+              ${ERROR_TOLERANCE_TOOLTIP_HTML}
               <div class="mode-toggle-group">
                 <button type="button" class="mode-btn room-mode-btn ${this.selectedErrorMode === 'allow_errors' ? 'active' : ''}" data-mode="allow_errors">
                   ALLOW ERRORS

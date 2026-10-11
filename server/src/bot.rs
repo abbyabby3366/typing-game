@@ -113,6 +113,7 @@ pub fn spawn_bot_task(
                 combo,
                 target_wpm * jitter,
                 if has_typo { 94.0 } else { 99.0 },
+                !has_typo,
             );
 
             if let Some(msg) = game_over_msg {

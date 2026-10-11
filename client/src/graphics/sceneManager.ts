@@ -144,16 +144,39 @@ export class SceneManager {
     const group = new THREE.Group();
     const color = isP1 ? 0x00f0ff : 0xff0055;
 
-    // Base pedestal
-    const baseGeo = new THREE.CylinderGeometry(2.0, 2.8, 3.5, 8);
+    // Base pedestal - lowered so it sits cleanly beneath the rotating rings
+    const baseGeo = new THREE.CylinderGeometry(2.0, 2.6, 1.4, 8);
     const baseMat = new THREE.MeshStandardMaterial({
       color: 0x0c1426,
       metalness: 0.85,
       roughness: 0.3,
+      emissive: isP1 ? 0x001828 : 0x280012,
     });
     const base = new THREE.Mesh(baseGeo, baseMat);
-    base.position.y = -1.75;
+    base.position.y = -2.8;
     group.add(base);
+
+    // Glowing emitter collar on top rim of the pedestal
+    const collarGeo = new THREE.TorusGeometry(1.95, 0.05, 8, 32);
+    collarGeo.rotateX(Math.PI / 2);
+    const collarMat = new THREE.MeshBasicMaterial({ color });
+    const collar = new THREE.Mesh(collarGeo, collarMat);
+    collar.position.y = -2.1;
+    group.add(collar);
+
+    // Holographic levitation containment field holding the core
+    const levGeo = new THREE.CylinderGeometry(0.35, 1.35, 2.3, 16, 1, true);
+    const levMat = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.16,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const levBeam = new THREE.Mesh(levGeo, levMat);
+    levBeam.position.y = -0.9;
+    group.add(levBeam);
 
     // Glowing core crystal
     const coreGeo = new THREE.OctahedronGeometry(1.2, 0);

@@ -449,9 +449,21 @@ export class HudView {
     if (currentWordIdx !== this.activeWordIndex) {
       if (this.activeWordIndex >= 0 && this.activeWordIndex < this.wordMetas.length) {
         const prev = this.wordMetas[this.activeWordIndex];
-        prev.container.className = 'passage-word word-completed';
-        for (const cs of prev.charSpans) {
-          cs.className = 'char char-correct';
+        const hasError = prev.charSpans.some(
+          (cs) => cs.classList.contains('char-error') || cs.classList.contains('char-pending')
+        );
+        if (hasError) {
+          prev.container.className = 'passage-word word-completed word-error';
+          for (const cs of prev.charSpans) {
+            if (cs.classList.contains('char-pending')) {
+              cs.className = 'char char-error';
+            }
+          }
+        } else {
+          prev.container.className = 'passage-word word-completed';
+          for (const cs of prev.charSpans) {
+            cs.className = 'char char-correct';
+          }
         }
       }
 

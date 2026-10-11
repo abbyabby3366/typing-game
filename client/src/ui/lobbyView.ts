@@ -51,6 +51,8 @@ export class LobbyView {
   }
 
   public render(initialRoomCode: string = ''): void {
+    const cleanRoomCode = initialRoomCode.trim().toUpperCase().replace(/^BOT-/, '');
+
     let savedName = localStorage.getItem('cyber_pilot_name');
     if (!savedName || savedName.startsWith('PILOT-')) {
       savedName = `PLAYER-${Math.floor(100 + Math.random() * 900)}`;
@@ -60,7 +62,7 @@ export class LobbyView {
     const savedCustomWpm = parseInt(localStorage.getItem('cyber_custom_bot_wpm') || '75', 10);
     this.customBotWpm = isNaN(savedCustomWpm) ? 75 : Math.max(15, Math.min(250, savedCustomWpm));
 
-    if (initialRoomCode) {
+    if (cleanRoomCode) {
       this.activeTab = 'multiplayer';
     }
 
@@ -83,25 +85,16 @@ export class LobbyView {
         <!-- GROUP 2: PRIMARY GAME MODE SELECTOR -->
         <div class="mode-segmented-control">
           <button id="tab-btn-solo" type="button" class="segment-btn ${this.activeTab === 'solo' ? 'active' : ''}">
-            <span class="btn-icon">${ICONS.bot(22)}</span>
-            <div class="btn-text-group">
-              <span class="btn-title">1-PLAYER BATTLE</span>
-              <span class="btn-desc">Solo Battle vs AI Drone</span>
-            </div>
+            <span class="btn-icon">${ICONS.bot(20)}</span>
+            <span class="btn-title">SINGLEPLAYER</span>
           </button>
           <button id="tab-btn-zen" type="button" class="segment-btn ${this.activeTab === 'zen' ? 'active' : ''}">
-            <span class="btn-icon">${ICONS.zen(22)}</span>
-            <div class="btn-text-group">
-              <span class="btn-title">ZEN MODE</span>
-              <span class="btn-desc">Pure Practice, No Duel</span>
-            </div>
+            <span class="btn-icon">${ICONS.zen(20)}</span>
+            <span class="btn-title">ZEN MODE</span>
           </button>
           <button id="tab-btn-multiplayer" type="button" class="segment-btn ${this.activeTab === 'multiplayer' ? 'active' : ''}">
-            <span class="btn-icon">${ICONS.globe(22)}</span>
-            <div class="btn-text-group">
-              <span class="btn-title">2-PLAYER DUEL</span>
-              <span class="btn-desc">Online Room Challenge</span>
-            </div>
+            <span class="btn-icon">${ICONS.globe(20)}</span>
+            <span class="btn-title">2-PLAYER DUEL</span>
           </button>
         </div>
 
@@ -120,7 +113,7 @@ export class LobbyView {
           categoryLabel,
           this.activeTab === 'zen'
         )}
-        ${renderMultiPanel(this.activeTab === 'multiplayer', initialRoomCode)}
+        ${renderMultiPanel(this.activeTab === 'multiplayer', cleanRoomCode)}
       </div>
     `;
 

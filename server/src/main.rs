@@ -50,13 +50,24 @@ async fn main() {
         .layer(cors)
         .with_state(state);
 
-    let port: u16 = 4000;
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    tracing::info!(">>> Cyber Typist Rust Backend listening on ws://{}", addr);
+    // Serve static client files if directory exists (for single-container production deployment)
+    let static_dir = std::path::Path::new("client/dist");
+    let app = if static_dir.exists() {
+        app.fallback_service(tower_http::services::ServeDir::new(static_dir))
+    } else {
+        app
+    };
+
+    let port: u16 = std::env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(4000);
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    tracing::info!(">>> Cyber Typist Rust Backend listening on http/ws://{}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr)
         .await
-        .expect("Failed to bind port 4000");
+        .unwrap_or_else(|_| panic!("Failed to bind port {}", port));
 
     // TCP_NODELAY disables Nagle's algorithm so small frames are sent immediately
     axum::serve(listener, app)
@@ -200,7 +211,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                 category,
                 custom_text,
             } => {
-                let room_code = format!("BOT-{}", generate_room_code());
+                let room_code = generate_room_code();
                 let settings = GameSettings {
                     error_mode,
                     category,
@@ -334,11 +345,13 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                 combo,
                 wpm,
                 accuracy,
+                is_correct,
                 ..
             } => {
                 if let (Some(ref room_arc), Some(role)) = (&current_room_arc, player_role) {
                     let mut room = room_arc.write().await;
-                    if let Some(game_over) = room.handle_word_completed(role, word, combo, wpm, accuracy) {
+                    let correct = is_correct.unwrap_or(true);
+                    if let Some(game_over) = room.handle_word_completed(role, word, combo, wpm, accuracy, correct) {
                         room.broadcast(game_over);
                     }
                 }

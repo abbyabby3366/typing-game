@@ -10,6 +10,30 @@ export const CATEGORY_LABELS: Record<string, string> = {
   custom: 'Custom Passage...',
 };
 
+export const ERROR_TOLERANCE_TOOLTIP_HTML = `
+  <label class="setting-label setting-label-with-tooltip">
+    <span>ERROR TOLERANCE</span>
+    <span class="info-tooltip-wrap" tabindex="0" aria-label="Error Tolerance Info">
+      <svg class="info-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="16" x2="12" y2="12"></line>
+        <line x1="12" y1="8" x2="12.01" y2="8"></line>
+      </svg>
+      <div class="cyber-tooltip">
+        <div class="tooltip-header">ERROR TOLERANCE MODES</div>
+        <div class="tooltip-row">
+          <span class="tooltip-tag tag-allow">ALLOW ERRORS</span>
+          <span class="tooltip-desc">Continue typing without stopping. Pressing <strong>Space</strong> advances even with typos—only <strong>100% correct words</strong> deal damage to your opponent.</span>
+        </div>
+        <div class="tooltip-row">
+          <span class="tooltip-tag tag-strict">STRICT MODE</span>
+          <span class="tooltip-desc">Cannot advance past a word until it is 100% correct. You must manually use <strong>Backspace</strong> or <strong>Ctrl+Backspace</strong> to fix errors before Space advances.</span>
+        </div>
+      </div>
+    </span>
+  </label>
+`;
+
 export function renderSoloPanel(
   selectedBotDiff: string,
   customBotWpm: number,
@@ -41,11 +65,6 @@ export function renderSoloPanel(
             <span class="diff-badge badge-hard">EXPERT</span>
             <span class="diff-name">CYBER-VIPER</span>
             <span class="diff-speed">~98 WPM</span>
-          </button>
-          <button type="button" class="bot-diff-card ${selectedBotDiff === 'cybergod' ? 'active' : ''}" data-diff="cybergod">
-            <span class="diff-badge badge-god">CYBERGOD</span>
-            <span class="diff-name">QUANTUM-CORE</span>
-            <span class="diff-speed">~135 WPM</span>
           </button>
           <button type="button" class="bot-diff-card ${selectedBotDiff === 'custom' ? 'active' : ''}" data-diff="custom">
             <span class="diff-badge badge-custom">CUSTOM</span>
@@ -82,7 +101,7 @@ export function renderSoloPanel(
         </div>
         <div class="config-grid-2col">
           <div class="setting-row">
-            <label class="setting-label">ERROR TOLERANCE</label>
+            ${ERROR_TOLERANCE_TOOLTIP_HTML}
             <div class="mode-toggle-group">
               <button type="button" class="mode-btn solo-mode-btn ${selectedErrorMode === 'allow_errors' ? 'active' : ''}" data-mode="allow_errors">
                 ALLOW ERRORS
@@ -132,8 +151,8 @@ export function renderSoloPanel(
         <div id="solo-lyrics-selector-wrapper" class="${selectedCategory === 'lyrics' ? '' : 'hidden'}" style="margin-top: 4px;"></div>
       </div>
 
-      <button id="btn-start-solo-match" type="button" class="btn-cyber-primary btn-launch">
-        ${ICONS.zap(16)} ENGAGE 1-PLAYER BATTLE
+      <button id="btn-start-solo-match" type="button" class="btn-cyber-primary btn-launch" style="margin-top: auto;">
+        ${ICONS.zap(16)} ENGAGE SINGLEPLAYER
       </button>
     </div>
   `;
@@ -147,19 +166,16 @@ export function renderZenPanel(
 ): string {
   return `
     <div id="panel-zen-mode" class="tab-panel ${isActive ? '' : 'hidden'}" style="display: flex; flex-direction: column; gap: 14px;">
-      <!-- Zen Protocol & Archive -->
+      <!-- Section 01: Zen Protocol & Archive -->
       <div class="section-group">
         <div class="section-header">
           <span class="section-number">01</span>
-          <span class="section-title">ZEN PRACTICE PROTOCOL & ARCHIVE</span>
+          <span class="section-title">PRACTICE PROTOCOL & ARCHIVE</span>
         </div>
-        <p style="font-size: 0.78rem; color: var(--text-secondary); margin: 0; line-height: 1.4;">
-          Tranquil solo typing session. No opponent, no tug-of-war countdown pressure, no clash projectiles. Practice passages or flow along to song lyrics at your own rhythm.
-        </p>
 
-        <div class="config-grid-2col" style="margin-top: 4px;">
+        <div class="config-grid-2col">
           <div class="setting-row">
-            <label class="setting-label">ERROR TOLERANCE</label>
+            ${ERROR_TOLERANCE_TOOLTIP_HTML}
             <div class="mode-toggle-group">
               <button type="button" class="mode-btn zen-mode-btn ${selectedErrorMode === 'allow_errors' ? 'active' : ''}" data-mode="allow_errors">
                 ALLOW ERRORS
@@ -209,7 +225,41 @@ export function renderZenPanel(
         <div id="zen-lyrics-selector-wrapper" class="${selectedCategory === 'lyrics' ? '' : 'hidden'}" style="margin-top: 4px;"></div>
       </div>
 
-      <button id="btn-start-zen-match" type="button" class="btn-cyber-primary btn-launch btn-zen-launch">
+      <!-- Section 02: Zen Mode Atmosphere -->
+      <div class="section-group">
+        <div class="section-header">
+          <span class="section-number">02</span>
+          <span class="section-title">TRANQUIL FLOW ENVIRONMENT</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+          <div style="background: rgba(0, 255, 170, 0.03); border: 1px solid rgba(0, 255, 170, 0.15); border-radius: 4px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; align-items: center; gap: 6px; color: #00ffaa; font-family: var(--font-display); font-size: 0.74rem; font-weight: 700; letter-spacing: 0.08em;">
+              ${ICONS.zen(15)} UNRUSHED FLOW
+            </div>
+            <div style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.4;">
+              Zero opponent pressure. No clashing beams, timer countdowns, or sudden pushbacks.
+            </div>
+          </div>
+          <div style="background: rgba(0, 240, 255, 0.03); border: 1px solid rgba(0, 240, 255, 0.15); border-radius: 4px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; align-items: center; gap: 6px; color: var(--cyan-primary); font-family: var(--font-display); font-size: 0.74rem; font-weight: 700; letter-spacing: 0.08em;">
+              ${ICONS.music(15)} SOUND HARMONICS
+            </div>
+            <div style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.4;">
+              Synthesizer audio chords tuned to keystrokes with synchronized lyrics flow.
+            </div>
+          </div>
+          <div style="background: rgba(217, 70, 239, 0.03); border: 1px solid rgba(217, 70, 239, 0.15); border-radius: 4px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; align-items: center; gap: 6px; color: #d946ef; font-family: var(--font-display); font-size: 0.74rem; font-weight: 700; letter-spacing: 0.08em;">
+              ${ICONS.zap(15)} ACCURACY FOCUS
+            </div>
+            <div style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.4;">
+              Calibrate finger positioning, rhythm cadence, and high accuracy streaks.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button id="btn-start-zen-match" type="button" class="btn-cyber-primary btn-launch btn-zen-launch" style="margin-top: auto;">
         ${ICONS.zen(18)} ENTER ZEN FLOW
       </button>
     </div>
@@ -217,56 +267,52 @@ export function renderZenPanel(
 }
 
 export function renderMultiPanel(isActive: boolean, initialRoomCode: string = ''): string {
+  const displayRoomCode = initialRoomCode ? initialRoomCode.trim().toUpperCase().replace(/^BOT-/, '') : '';
   return `
     <div id="panel-multiplayer-mode" class="tab-panel ${isActive ? '' : 'hidden'}">
       <div class="lobby-grid">
         <!-- Subpanel 1: Host Room -->
-        <div class="lobby-panel" style="justify-content: space-between;">
+        <div class="lobby-panel">
           <div>
-            <div class="panel-title">
-              HOST PRIVATE ROOM
+            <div class="panel-title" style="display: flex; align-items: center; gap: 8px;">
+              ${ICONS.zap(16)} HOST PRIVATE ROOM
             </div>
-            <p style="font-size: 0.82rem; color: var(--text-secondary); line-height: 1.5; margin: 10px 0 16px 0;">
-              Initialize a private arena to duel head-to-head with a rival. Settings such as error tolerance and passage archive can be configured inside the room after creation.
+            <p style="font-size: 0.84rem; color: var(--text-secondary); line-height: 1.5; margin: 10px 0 14px 0;">
+              Create a private duel arena and share your 5-digit room code or invite link with a rival.
             </p>
-
-            <div style="display: flex; flex-direction: column; gap: 10px; padding: 12px; background: rgba(0, 240, 255, 0.04); border: 1px solid rgba(0, 240, 255, 0.15); border-radius: 4px; font-family: var(--font-mono); font-size: 0.74rem; color: var(--text-secondary);">
+            <div style="display: flex; flex-direction: column; gap: 8px; padding: 12px; background: rgba(0, 240, 255, 0.04); border: 1px solid rgba(0, 240, 255, 0.15); border-radius: 4px; font-family: var(--font-mono); font-size: 0.74rem; color: var(--text-secondary);">
               <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="color: var(--cyan-primary);">${ICONS.key(16)}</span>
-                <span>Instant Room Code & 1-Click Link</span>
+                <span style="color: var(--cyan-primary);">${ICONS.check(14)}</span>
+                <span>Host controls passage & error rules</span>
               </div>
               <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="color: var(--cyan-primary);">${ICONS.settings(16)}</span>
-                <span>In-Room Error Mode & Passage Selection</span>
-              </div>
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="color: var(--cyan-primary);">${ICONS.music(16)}</span>
-                <span>Lyrics Mode & Custom Text Support</span>
+                <span style="color: var(--cyan-primary);">${ICONS.check(14)}</span>
+                <span>1-click shareable rival invite link</span>
               </div>
             </div>
           </div>
 
-          <button id="btn-create-room" type="button" class="btn-cyber-primary" style="margin-top: 18px; padding: 13px; font-size: 0.95rem; font-weight: 700; letter-spacing: 0.12em; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;">
+          <button id="btn-create-room" type="button" class="btn-cyber-primary" style="margin-top: auto; padding: 13px; font-size: 0.95rem; font-weight: 700; letter-spacing: 0.12em; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;">
             ${ICONS.zap(16)} CREATE ROOM
           </button>
         </div>
 
         <!-- Subpanel 2: Join Room -->
-        <div class="lobby-panel" style="justify-content: space-between;">
+        <div class="lobby-panel">
           <div>
             <div class="panel-title" style="display: flex; align-items: center; gap: 8px;">
               ${ICONS.link(16)} JOIN BY ROOM CODE
             </div>
-            <p style="font-size: 0.82rem; color: var(--text-secondary); line-height: 1.5; margin: 10px 0 16px 0;">
-              Enter the room access code provided by your rival to synchronize conduits and engage in battle.
+            <p style="font-size: 0.84rem; color: var(--text-secondary); line-height: 1.5; margin: 10px 0 14px 0;">
+              Enter the 5-digit room code provided by your rival to engage in battle.
             </p>
-            <div class="setting-row" style="margin-top: 6px;">
+            <div class="setting-row">
               <label class="setting-label">ROOM ACCESS CODE</label>
-              <input id="input-join-room-code" type="text" class="input-cyber" value="${initialRoomCode}" placeholder="E.G. 7K9QM" maxlength="10" style="text-transform: uppercase; font-size: 1.15rem; letter-spacing: 0.18em; font-weight: 800; text-align: center;" />
+              <input id="input-join-room-code" type="text" class="input-cyber" value="${displayRoomCode}" placeholder="E.G. 7K9QM" maxlength="10" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" style="text-transform: uppercase; font-size: 1.15rem; letter-spacing: 0.18em; font-weight: 800; text-align: center;" />
             </div>
           </div>
 
-          <div style="margin-top: 18px;">
+          <div style="margin-top: auto;">
             <button id="btn-join-room" type="button" class="btn-cyber-secondary" style="padding: 13px; font-size: 0.95rem; font-weight: 700; letter-spacing: 0.12em; width: 100%;">
               JOIN ROOM
             </button>

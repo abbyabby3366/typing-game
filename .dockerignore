@@ -1,0 +1,10 @@
+node_modules
+target
+server/target
+client/node_modules
+client/dist
+.git
+.agents
+.gemini
+dist
+*.log

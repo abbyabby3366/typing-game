@@ -1,4 +1,4 @@
-export interface Passage {
+interface Passage {
   id: string;
   title: string;
   category: string;
@@ -6,7 +6,7 @@ export interface Passage {
   words: string[];
 }
 
-export const CURATED_PASSAGES: Omit<Passage, 'words'>[] = [
+const CURATED_PASSAGES: Omit<Passage, 'words'>[] = [
   {
     id: 'cyberpunk_matrix',
     title: 'Neuromancer: The Matrix',

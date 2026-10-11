@@ -46,6 +46,7 @@ class App {
   private isMatchActive: boolean = false;
   private lastTugPosition: number = 0;
   private activeSong: SongTrack | null = null;
+  private isBotMatch: boolean = false;
   private isZenMode: boolean = false;
   private zenStartTime: number = 0;
   private lastZenConfig: {
@@ -86,7 +87,7 @@ class App {
 
     this.escapeManager = new EscapeExitManager({
       isSessionActive: () => this.isMatchActive || this.countdownTimer !== null,
-      getMode: () => (this.isZenMode ? 'zen' : this.currentRoomCode ? 'duel' : 'solo'),
+      getMode: () => (this.isZenMode ? 'zen' : this.isBotMatch ? 'solo' : 'duel'),
       onExit: () => this.exitOrForfeitMatch(),
     });
 
@@ -140,8 +141,10 @@ class App {
           this.currentRoomCode = msg.payload.room_code;
           this.myRole = msg.payload.role;
           this.currentErrorMode = msg.payload.settings.error_mode as ErrorMode;
-          this.updateUrlRoomCode(this.currentRoomCode);
-          this.waitingRoomView.render(this.currentRoomCode, true, msg.payload.settings);
+          if (!this.isBotMatch) {
+            this.updateUrlRoomCode(this.currentRoomCode);
+            this.waitingRoomView.render(this.currentRoomCode, true, msg.payload.settings);
+          }
           break;
 
         case 'RoomSettingsUpdated':
@@ -207,7 +210,7 @@ class App {
           this.showToast('Opponent disconnected from arena.', true);
           this.isMatchActive = false;
           soundEngine.stopBeamHum();
-          this.lobbyView.render();
+          this.returnToLobby();
           break;
 
         case 'ErrorAlert':
@@ -221,6 +224,8 @@ class App {
       this.myName = cfg.playerName;
       this.currentErrorMode = cfg.errorMode;
       this.activeSong = cfg.selectedSong || null;
+      this.isBotMatch = false;
+      this.isZenMode = false;
       this.network.send({
         type: 'CreateRoom',
         payload: { player_name: cfg.playerName, error_mode: cfg.errorMode, category: cfg.category, custom_text: cfg.customText },
@@ -239,13 +244,14 @@ class App {
     this.waitingRoomView.onCancelRoom = () => {
       this.isMatchActive = false;
       this.activeSong = null;
-      this.updateUrlRoomCode('');
       this.network.send({ type: 'LeaveRoom' });
-      this.lobbyView.render();
+      this.returnToLobby();
     };
 
     this.lobbyView.onJoinRoom = (code, playerName) => {
       this.myName = playerName;
+      this.isBotMatch = false;
+      this.isZenMode = false;
       this.network.send({ type: 'JoinRoom', payload: { room_code: code, player_name: playerName } });
     };
 
@@ -253,6 +259,8 @@ class App {
       this.myName = playerName;
       this.currentErrorMode = errorMode;
       this.activeSong = selectedSong || null;
+      this.isBotMatch = true;
+      this.isZenMode = false;
       this.network.send({
         type: 'StartBotMatch',
         payload: {
@@ -270,6 +278,7 @@ class App {
       this.myName = playerName;
       this.currentErrorMode = errorMode;
       this.activeSong = selectedSong || null;
+      this.isBotMatch = false;
       this.isZenMode = true;
       this.lastZenConfig = { errorMode, category, customText, selectedSong };
       const { title, text, words } = buildZenPassage(category, customText, selectedSong);
@@ -281,11 +290,11 @@ class App {
         this.exitOrForfeitMatch();
         return;
       }
-      this.modalView.showConfirm(
-        'SURRENDER DUEL',
-        'Are you sure you want to forfeit the match and return to the battle lobby?',
-        () => this.exitOrForfeitMatch()
-      );
+      const title = this.isBotMatch ? 'SURRENDER BATTLE' : 'SURRENDER DUEL';
+      const msg = this.isBotMatch
+        ? 'Are you sure you want to forfeit against the AI drone and return to the battle lobby?'
+        : 'Are you sure you want to forfeit the match and return to the battle lobby?';
+      this.modalView.showConfirm(title, msg, () => this.exitOrForfeitMatch());
     };
   }
 
@@ -306,11 +315,10 @@ class App {
     } else {
       soundEngine.playDefeatSound();
       this.network.send({ type: 'LeaveRoom' });
-      this.currentRoomCode = '';
       this.showToast('Match forfeited', true);
     }
     this.escapeManager.reset();
-    this.lobbyView.render();
+    this.returnToLobby();
   }
 
   private initTypingHandlers(): void {
@@ -354,28 +362,30 @@ class App {
       else progressTimer = window.setTimeout(sendProgress, wait);
     };
 
-    this.typingEngine.onWordCompleted = (word, index, combo, wpm, accuracy) => {
-      // Check for combo surge sound milestone (5x, 10x, 15x...)
+    this.typingEngine.onWordCompleted = (word, index, combo, wpm, accuracy, isCorrect = true) => {
+      if (!isCorrect) {
+        this.network.send({
+          type: 'WordCompleted',
+          payload: { word_index: index, word, wpm, accuracy, combo: 0, push_power: 0, is_correct: false },
+        });
+        if (this.isZenMode && index + 1 >= this.typingEngine.words.length) this.handleZenComplete();
+        return;
+      }
       if (combo > 0 && combo % 5 === 0) {
         soundEngine.playComboSurge(combo);
         this.sceneManager.triggerShake(this.isZenMode ? 0.2 : 0.5);
       }
-
       if (this.isZenMode) {
         this.projectileManager.fireWord(word, true, this.sceneManager.p1CannonPos, 10, combo, 1.0);
         if (index + 1 >= this.typingEngine.words.length) this.handleZenComplete();
         return;
       }
-
-      // Fire word projectile immediately from player's cannon
       const isP1 = this.myRole === 'player1';
       const cannonPos = isP1 ? this.sceneManager.p1CannonPos : this.sceneManager.p2CannonPos;
       this.projectileManager.fireWord(word, isP1, cannonPos, this.beamEffect.currentClashX, combo, 1.0 + combo * 0.1);
-
-      // Send completed word to server
       this.network.send({
         type: 'WordCompleted',
-        payload: { word_index: index, word, wpm, accuracy, combo, push_power: 1.0 + combo * 0.1 },
+        payload: { word_index: index, word, wpm, accuracy, combo, push_power: 1.0 + combo * 0.1, is_correct: true },
       });
     };
 
@@ -471,7 +481,7 @@ class App {
     this.hudView.updateTugMeter(payload.new_tug_position);
     soundEngine.updateBeamHumTug(payload.new_tug_position);
 
-    if (payload.player_role !== this.myRole) {
+    if (payload.player_role !== this.myRole && payload.push_power > 0) {
       const cannonPos = isP1 ? this.sceneManager.p1CannonPos : this.sceneManager.p2CannonPos;
       this.projectileManager.fireWord(
         payload.word,
@@ -499,7 +509,11 @@ class App {
     this.modalView.showGameOver(
       { isWinner, isDraw, reason: payload.reason, p1Stats: payload.p1_stats, p2Stats: payload.p2_stats },
       () => { musicPlayer.stop(); this.network.send({ type: 'RequestRematch' }); },
-      () => { musicPlayer.stop(); this.network.send({ type: 'LeaveRoom' }); this.lobbyView.render(); }
+      () => {
+        musicPlayer.stop();
+        this.network.send({ type: 'LeaveRoom' });
+        this.returnToLobby();
+      }
     );
   }
 
@@ -536,14 +550,31 @@ class App {
       },
       () => {
         this.beamEffect.setVisible(true);
-        this.lobbyView.render();
+        this.returnToLobby();
       }
     );
   }
 
+  private returnToLobby(): void {
+    this.currentRoomCode = '';
+    this.isBotMatch = false;
+    this.isZenMode = false;
+    this.updateUrlRoomCode('');
+    this.lobbyView.render('');
+  }
+
   private checkUrlParams(): void {
     const roomParam = new URLSearchParams(window.location.search).get('room');
-    this.lobbyView.render(roomParam ? roomParam.toUpperCase() : '');
+    if (roomParam && roomParam.trim()) {
+      let code = roomParam.trim().toUpperCase();
+      if (code.startsWith('BOT-')) {
+        code = code.replace(/^BOT-/, '');
+        this.updateUrlRoomCode(code);
+      }
+      this.lobbyView.render(code);
+      return;
+    }
+    this.lobbyView.render('');
   }
 
   private updateUrlRoomCode(code: string): void {

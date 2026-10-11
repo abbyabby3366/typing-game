@@ -85,6 +85,8 @@ pub enum ClientMsg {
         accuracy: f32,
         combo: u32,
         push_power: f32,
+        #[serde(default)]
+        is_correct: Option<bool>,
     },
     TypoPenalized {
         combo_lost: u32,

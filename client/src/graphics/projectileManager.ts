@@ -287,32 +287,4 @@ export class ProjectileManager {
       }
     }
   }
-
-  public dispose(): void {
-    for (const p of this.projectiles) {
-      this.scene.remove(p.pooledItem.mesh);
-      p.pooledItem.inUse = false;
-    }
-    this.projectiles = [];
-
-    for (const b of this.activeBursts) {
-      this.scene.remove(b.particles);
-      b.inUse = false;
-    }
-    this.activeBursts = [];
-
-    for (const item of this.wordPool) {
-      this.scene.remove(item.mesh);
-      item.material.dispose();
-      item.texture.dispose();
-    }
-    this.wordPool = [];
-
-    for (const b of this.burstPool) {
-      this.scene.remove(b.particles);
-      b.particles.geometry.dispose();
-      b.mat.dispose();
-    }
-    this.burstPool = [];
-  }
 }

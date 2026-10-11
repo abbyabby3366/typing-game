@@ -18,7 +18,7 @@ export type ClientMsg =
   | { type: 'UpdateRoomSettings'; payload: { error_mode: string; category: string; custom_text: string | null } }
   | { type: 'JoinRoom'; payload: { room_code: string; player_name: string } }
   | { type: 'StartBotMatch'; payload: { player_name: string; bot_difficulty: string; custom_bot_wpm?: number; error_mode: string; category: string; custom_text: string | null } }
-  | { type: 'WordCompleted'; payload: { word_index: number; word: string; wpm: number; accuracy: number; combo: number; push_power: number } }
+  | { type: 'WordCompleted'; payload: { word_index: number; word: string; wpm: number; accuracy: number; combo: number; push_power: number; is_correct?: boolean } }
   | { type: 'TypoPenalized'; payload: { combo_lost: number } }
   | { type: 'TypingProgress'; payload: { char_index: number; word_index: number; wpm: number; accuracy: number; combo: number } }
   | { type: 'RequestRematch' }
@@ -40,7 +40,10 @@ export class NetworkClient {
   constructor() {
     const isHttps = window.location.protocol === 'https:';
     const host = window.location.hostname || '127.0.0.1';
-    this.url = `${isHttps ? 'wss' : 'ws'}://${host}:4000/ws`;
+    // If Vite dev server on port 5173, point to backend on 4000; otherwise connect to current host:port
+    const defaultWsPort = window.location.port === '5173' ? ':4000' : (window.location.port ? `:${window.location.port}` : '');
+    const wsHost = (import.meta as any).env?.VITE_WS_URL || `${isHttps ? 'wss' : 'ws'}://${host}${defaultWsPort}/ws`;
+    this.url = wsHost;
   }
 
   public connect(): void {

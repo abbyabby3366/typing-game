@@ -151,15 +151,21 @@ impl Room {
         combo: u32,
         wpm: f32,
         accuracy: f32,
+        is_correct: bool,
     ) -> Option<ServerMsg> {
         if self.state != RoomState::Active {
             return None;
         }
 
-        // Calculate push power based on word length and combo multiplier
-        let word_len = word.chars().count().max(3) as f32;
-        let combo_mult = 1.0 + (combo as f32 * 0.12).min(2.5);
-        let push_power = (word_len / 45.0) * combo_mult;
+        let push_power = if is_correct {
+            let total_words = self.words.len().max(20) as f32;
+            let base_divisor = (total_words * 3.2).clamp(160.0, 260.0);
+            let word_len = word.chars().count().max(3) as f32;
+            let combo_mult = 1.0 + (combo as f32 * 0.08).min(1.8);
+            (word_len / base_divisor) * combo_mult
+        } else {
+            0.0
+        };
 
         let stats = match role {
             PlayerRole::Player1 => {
