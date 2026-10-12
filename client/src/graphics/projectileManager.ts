@@ -74,6 +74,9 @@ export class ProjectileManager {
     });
 
     const mesh = new THREE.Mesh(ProjectileManager.planeGeo!, material);
+    mesh.visible = false;
+    this.scene.add(mesh);
+
     const item: PooledWordMesh = {
       mesh,
       canvas,
@@ -91,24 +94,24 @@ export class ProjectileManager {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     const primaryColor = isP1 ? '#00f0ff' : '#ff0055';
-    const glowColor = isP1 ? 'rgba(0, 240, 255, 0.8)' : 'rgba(255, 0, 85, 0.8)';
+    const glowColor = isP1 ? 'rgba(0, 240, 255, 0.85)' : 'rgba(255, 0, 85, 0.85)';
 
     // Cyber border badge
     ctx.strokeStyle = primaryColor;
     ctx.lineWidth = 4;
-    ctx.fillStyle = 'rgba(5, 8, 16, 0.85)';
+    ctx.fillStyle = 'rgba(5, 8, 16, 0.88)';
     ctx.beginPath();
     ctx.roundRect(16, 16, canvas.width - 32, canvas.height - 32, 12);
     ctx.fill();
     ctx.stroke();
 
-    // Word text with intense neon glow
+    // Word text with optimized neon glow (reduced shadowBlur avoids multi-pass CPU raster lag)
     ctx.font = 'bold 54px "Orbitron", monospace, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
     ctx.shadowColor = glowColor;
-    ctx.shadowBlur = 24;
+    ctx.shadowBlur = 8;
     ctx.fillStyle = '#ffffff';
     ctx.fillText(word.toUpperCase(), canvas.width / 2, canvas.height / 2);
 
@@ -117,7 +120,7 @@ export class ProjectileManager {
       ctx.font = 'bold 22px "JetBrains Mono", monospace';
       ctx.fillStyle = '#ffd700';
       ctx.shadowColor = '#ffd700';
-      ctx.shadowBlur = 10;
+      ctx.shadowBlur = 6;
       ctx.fillText(`+${combo}X`, canvas.width - 70, 36);
     }
 
@@ -138,7 +141,7 @@ export class ProjectileManager {
     const origin = startPos.clone().add(new THREE.Vector3(isP1 ? 2.0 : -2.0, 1.2, 0));
     pooledItem.mesh.position.copy(origin);
     pooledItem.mesh.rotation.set(0, 0, 0);
-    this.scene.add(pooledItem.mesh);
+    pooledItem.mesh.visible = true;
 
     const target = new THREE.Vector3(targetClashX, 0.5, 0);
 
@@ -180,6 +183,9 @@ export class ProjectileManager {
     });
 
     const particles = new THREE.Points(geo, mat);
+    particles.visible = false;
+    this.scene.add(particles);
+
     const burst: PooledSparkBurst = {
       particles,
       positions,
@@ -218,9 +224,11 @@ export class ProjectileManager {
     }
 
     const posAttr = burst.particles.geometry.attributes.position as THREE.BufferAttribute;
+    posAttr.clearUpdateRanges();
+    posAttr.addUpdateRange(0, count * 3);
     posAttr.needsUpdate = true;
 
-    this.scene.add(burst.particles);
+    burst.particles.visible = true;
     this.activeBursts.push(burst);
   }
 
@@ -255,8 +263,8 @@ export class ProjectileManager {
           onImpactCallback(p.isP1, p.pushPower);
         }
 
-        // Return mesh to pool without GC destruction
-        this.scene.remove(p.pooledItem.mesh);
+        // Return mesh to pool via visibility toggle (zero scene graph rebuilds)
+        p.pooledItem.mesh.visible = false;
         p.pooledItem.inUse = false;
         this.projectiles.splice(i, 1);
       }
@@ -275,13 +283,15 @@ export class ProjectileManager {
       }
 
       const posAttr = b.particles.geometry.attributes.position as THREE.BufferAttribute;
+      posAttr.clearUpdateRanges();
+      posAttr.addUpdateRange(0, count * 3);
       posAttr.needsUpdate = true;
 
       const progress = b.life / b.maxLife;
       b.mat.opacity = Math.max(0, 1.0 - progress);
 
       if (b.life >= b.maxLife) {
-        this.scene.remove(b.particles);
+        b.particles.visible = false;
         b.inUse = false;
         this.activeBursts.splice(i, 1);
       }

@@ -36,6 +36,7 @@ export class SceneManager {
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x05070e);
     this.scene.fog = new THREE.FogExp2(0x05070e, 0.025);
 
     this.camera = new THREE.PerspectiveCamera(
@@ -52,6 +53,7 @@ export class SceneManager {
       powerPreference: 'high-performance',
       stencil: false,
       depth: true,
+      alpha: false,
     });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     // Cap pixel ratio to 1.25 to prevent GPU fill-rate stalling on 1440p/4K displays
@@ -64,7 +66,14 @@ export class SceneManager {
     this.initCannons();
     this.initStarfield();
 
-    window.addEventListener('resize', this.onResize.bind(this));
+    let resizeRaf: number | null = null;
+    window.addEventListener('resize', () => {
+      if (resizeRaf !== null) cancelAnimationFrame(resizeRaf);
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = null;
+        this.onResize();
+      });
+    });
   }
 
   private initLighting(): void {

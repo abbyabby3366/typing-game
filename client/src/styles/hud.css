@@ -217,8 +217,14 @@
   pointer-events: none;
   z-index: 10;
   will-change: transform;
+  backface-visibility: hidden;
   transition: transform 0.075s cubic-bezier(0.2, 0.9, 0.4, 1), opacity 0.15s ease, background 0.1s ease;
   animation: blink-caret 1s infinite;
+}
+
+.passage-caret.caret-typing {
+  animation: none;
+  opacity: 1 !important;
 }
 
 .passage-caret.caret-flash {
@@ -249,7 +255,7 @@
 .char {
   position: relative;
   display: inline;
-  transition: color 0.08s, text-shadow 0.08s;
+  transition: color 0.04s ease-out;
 }
 
 .char-pending {

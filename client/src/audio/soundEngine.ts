@@ -126,29 +126,27 @@ class ProceduralSoundEngine {
     return this.isMuted;
   }
 
-  // Ultra low-latency pre-rendered mechanical switch keystroke
+  // Keystroke sound: plays only on typo errors for clean, non-distracting typing
   public playKeystroke(isError: boolean = false): void {
+    if (!isError) return;
     const ctx = this.ensureContext();
     if (!ctx || this.isMuted) return;
 
-    if (this.keyClickBuffers.length === 0) {
+    if (!this.errorBuffer) {
       this.initKeyBuffers();
     }
+    if (!this.errorBuffer) return;
 
     try {
       const source = ctx.createBufferSource();
-      if (isError && this.errorBuffer) {
-        source.buffer = this.errorBuffer;
-        source.playbackRate.setValueAtTime(0.95 + Math.random() * 0.1, ctx.currentTime);
-      } else if (this.keyClickBuffers.length > 0) {
-        const buf = this.keyClickBuffers[this.keyClickIndex++ % this.keyClickBuffers.length];
-        source.buffer = buf;
-        source.playbackRate.setValueAtTime(0.96 + Math.random() * 0.08, ctx.currentTime);
-      } else {
-        return;
-      }
-
+      source.buffer = this.errorBuffer;
+      source.playbackRate.setValueAtTime(0.95 + Math.random() * 0.1, ctx.currentTime);
       source.connect(this.masterGain!);
+      source.onended = () => {
+        try {
+          source.disconnect();
+        } catch {}
+      };
       source.start();
     } catch {
       // Silent fallback
@@ -191,6 +189,13 @@ class ProceduralSoundEngine {
       gain.connect(this.masterGain!);
     }
 
+    osc.onended = () => {
+      try {
+        osc.disconnect();
+        gain.disconnect();
+        panner?.disconnect();
+      } catch {}
+    };
     osc.start(now);
     osc.stop(now + 0.18);
   }
@@ -212,6 +217,12 @@ class ProceduralSoundEngine {
 
     subOsc.connect(subGain);
     subGain.connect(this.masterGain!);
+    subOsc.onended = () => {
+      try {
+        subOsc.disconnect();
+        subGain.disconnect();
+      } catch {}
+    };
     subOsc.start(now);
     subOsc.stop(now + 0.28);
   }
@@ -234,6 +245,12 @@ class ProceduralSoundEngine {
 
     osc.connect(gain);
     gain.connect(this.masterGain!);
+    osc.onended = () => {
+      try {
+        osc.disconnect();
+        gain.disconnect();
+      } catch {}
+    };
     osc.start(now);
     osc.stop(now + 0.28);
   }
@@ -253,6 +270,12 @@ class ProceduralSoundEngine {
 
     osc.connect(gain);
     gain.connect(this.masterGain!);
+    osc.onended = () => {
+      try {
+        osc.disconnect();
+        gain.disconnect();
+      } catch {}
+    };
     osc.start(now);
     osc.stop(now + (isFinal ? 0.35 : 0.15));
   }

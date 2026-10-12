@@ -19,10 +19,15 @@ export function startRenderLoop(options: RenderLoopOptions): void {
   const animate = () => {
     requestAnimationFrame(animate);
 
+    // Pause rendering and calculations when tab is hidden to save GPU cycles and battery
+    if (document.hidden) {
+      return;
+    }
+
     // In lobby, throttle background 3D canvas to ~30 FPS for instant UI response
     if (!options.isMatchActive()) {
       const now = performance.now();
-      if (now - lastLobbyFrame < 32) {
+      if (now - lastLobbyFrame < 33) {
         return;
       }
       lastLobbyFrame = now;

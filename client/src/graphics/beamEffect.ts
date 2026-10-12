@@ -166,12 +166,13 @@ export class BeamEffect {
       const mat = isP1 ? BeamEffect.p1ShockMat! : BeamEffect.p2ShockMat!;
       ring = new THREE.Mesh(BeamEffect.ringGeo!, mat.clone());
       ring.rotation.y = Math.PI / 2;
+      this.scene.add(ring);
     }
 
     ring.position.set(this.currentClashX, 0.5, 0);
     ring.scale.set(1.0, 1.0, 1.0);
     (ring.material as THREE.MeshBasicMaterial).opacity = 0.85;
-    this.scene.add(ring);
+    ring.visible = true;
 
     this.shockwaves.push({
       mesh: ring,
@@ -229,7 +230,7 @@ export class BeamEffect {
     const haloScale = 1.0 + Math.cos(time * 16) * 0.3;
     this.nexusHalo.scale.set(haloScale, haloScale, haloScale);
 
-    // Update Nexus Spark Particles
+    // Update Nexus Spark Particles - sqrt-free squared distance check
     const posAttr = this.nexusSparks.geometry.attributes.position as THREE.BufferAttribute;
     const count = this.sparkPositions.length / 3;
 
@@ -238,13 +239,13 @@ export class BeamEffect {
       this.sparkPositions[i * 3 + 1] += this.sparkVelocities[i * 3 + 1] * delta;
       this.sparkPositions[i * 3 + 2] += this.sparkVelocities[i * 3 + 2] * delta;
 
-      // Check distance from clash nexus
+      // Fast squared distance from clash nexus (eliminates Math.sqrt overhead)
       const dx = this.sparkPositions[i * 3] - this.clashPos.x;
       const dy = this.sparkPositions[i * 3 + 1] - this.clashPos.y;
       const dz = this.sparkPositions[i * 3 + 2] - this.clashPos.z;
-      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      const distSq = dx * dx + dy * dy + dz * dz;
 
-      if (dist > 3.0 || Math.random() < 0.05) {
+      if (distSq > 9.0 || Math.random() < 0.05) {
         // Reset to nexus center with new velocity
         this.sparkPositions[i * 3] = this.clashPos.x;
         this.sparkPositions[i * 3 + 1] = this.clashPos.y;
@@ -257,7 +258,7 @@ export class BeamEffect {
     }
     posAttr.needsUpdate = true;
 
-    // Update Expanding Shockwaves
+    // Update Expanding Shockwaves without mutating scene hierarchy
     for (let i = this.shockwaves.length - 1; i >= 0; i--) {
       const sw = this.shockwaves[i];
       sw.scale += delta * 6.5;
@@ -266,7 +267,7 @@ export class BeamEffect {
       (sw.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, sw.opacity);
 
       if (sw.opacity <= 0 || sw.scale >= sw.maxScale) {
-        this.scene.remove(sw.mesh);
+        sw.mesh.visible = false;
         if (sw.isP1) {
           this.shockwavePoolP1.push(sw.mesh);
         } else {

@@ -61,6 +61,16 @@ export class TypingEngine {
     this.isActive = false;
   }
 
+  private cachedStats: TypingStats = {
+    wpm: 0,
+    accuracy: 100,
+    combo: 0,
+    maxCombo: 0,
+    wordsCompleted: 0,
+    totalWords: 0,
+    charsTyped: 0,
+  };
+
   public getStats(): TypingStats {
     const elapsedMinutes = this.startTime ? Math.max((performance.now() - this.startTime) / 60000, 0.01) : 0.01;
     const wpm = Math.round((this.correctKeystrokes / 5) / elapsedMinutes);
@@ -68,15 +78,15 @@ export class TypingEngine {
       ? Math.round((this.correctKeystrokes / this.totalKeystrokes) * 100)
       : 100;
 
-    return {
-      wpm: Math.max(wpm, 0),
-      accuracy: Math.min(Math.max(accuracy, 0), 100),
-      combo: this.currentCombo,
-      maxCombo: this.maxCombo,
-      wordsCompleted: this.currentWordIndex,
-      totalWords: this.words.length,
-      charsTyped: this.correctKeystrokes,
-    };
+    this.cachedStats.wpm = Math.max(wpm, 0);
+    this.cachedStats.accuracy = Math.min(Math.max(accuracy, 0), 100);
+    this.cachedStats.combo = this.currentCombo;
+    this.cachedStats.maxCombo = this.maxCombo;
+    this.cachedStats.wordsCompleted = this.currentWordIndex;
+    this.cachedStats.totalWords = this.words.length;
+    this.cachedStats.charsTyped = this.correctKeystrokes;
+
+    return this.cachedStats;
   }
 
   public handleKeyDown(e: KeyboardEvent): boolean {
@@ -98,7 +108,6 @@ export class TypingEngine {
         if (this.typedBuffer.length > 0) {
           this.typedBuffer = '';
           this.clearErrorFlash();
-          soundEngine.playKeystroke(false);
           this.onStateChanged?.();
           return true;
         }
@@ -108,7 +117,6 @@ export class TypingEngine {
       if (this.typedBuffer.length > 0) {
         this.typedBuffer = this.typedBuffer.slice(0, -1);
         this.clearErrorFlash();
-        soundEngine.playKeystroke(false);
         this.onStateChanged?.();
         return true;
       }
@@ -164,7 +172,6 @@ export class TypingEngine {
     this.typedBuffer += char;
     if (isCorrect) {
       this.correctKeystrokes++;
-      soundEngine.playKeystroke(false);
       this.clearErrorFlash();
     } else {
       this.registerWrongKey(false);

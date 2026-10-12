@@ -119,11 +119,15 @@ impl Room {
     }
 
     pub fn broadcast(&self, msg: ServerMsg) {
-        if let Some(ref p1) = self.p1 {
-            let _ = p1.tx.send(msg.clone());
-        }
-        if let Some(ref p2) = self.p2 {
-            if !self.is_bot_match {
+        if self.is_bot_match || self.p2.is_none() {
+            if let Some(ref p1) = self.p1 {
+                let _ = p1.tx.send(msg);
+            }
+        } else {
+            if let Some(ref p1) = self.p1 {
+                let _ = p1.tx.send(msg.clone());
+            }
+            if let Some(ref p2) = self.p2 {
                 let _ = p2.tx.send(msg);
             }
         }

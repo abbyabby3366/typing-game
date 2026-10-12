@@ -4,6 +4,8 @@ import { musicPlayer } from '../audio/musicPlayer';
 import { ICONS } from './icons';
 import { escapeHtml } from './escapeHtml';
 
+import { CaretTracker, WordCaretMeta } from './caretTracker';
+
 export interface OpponentStats {
   name: string;
   wpm: number;
@@ -13,19 +15,7 @@ export interface OpponentStats {
   combo: number;
 }
 
-interface CaretStop {
-  x: number;
-  y: number;
-  h: number;
-}
-
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-
-interface WordMeta {
-  container: HTMLElement;
-  expectedWord: string;
-  charSpans: HTMLElement[];
-}
 
 export class HudView {
   private container: HTMLElement;
@@ -51,24 +41,42 @@ export class HudView {
   private zenStatEl: HTMLElement | null = null;
   private countdownEl: HTMLElement | null = null;
 
-  // Incremental word tracking
-  private wordMetas: WordMeta[] = [];
+  // Incremental word tracking and zero-reflow CaretTracker
+  private wordMetas: WordCaretMeta[] = [];
   private activeWordIndex: number = -1;
   private lastScrollTop: number = 0;
   private lastEngine: TypingEngine | null = null;
-  // Caret positions for the active word (one per char, plus one after the last char).
-  // Measured once per word so keystrokes don't force a layout read each time.
-  private caretStops: CaretStop[] | null = null;
+  private caretTracker: CaretTracker = new CaretTracker();
+
+  // Dirty-tracking cache for zero-redundancy DOM updates
+  private lastTugP1Percent: number = -1;
+  private lastTugRoundP1: number = -1;
+  private lastWpm: number = -1;
+  private lastAcc: number = -1;
+  private lastCombo: number = -1;
+  private lastOppWpm: number = -1;
+  private lastOppWords: string = '';
+  private lastZenPct: number = -1;
+  private lastZenWords: string = '';
 
   constructor(container: HTMLElement) {
     this.container = container;
 
-    // Window resize smoothly re-aligns floating caret
+    // Window resize smoothly re-aligns floating caret with requestAnimationFrame debouncing
+    let resizeRaf: number | null = null;
     const remeasureCaret = () => {
-      this.caretStops = null;
-      if (this.lastEngine) {
-        this.updateCaretPosition(this.lastEngine);
-      }
+      if (resizeRaf !== null) cancelAnimationFrame(resizeRaf);
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = null;
+        this.caretTracker.invalidateCache();
+        if (this.lastEngine) {
+          this.caretTracker.update(
+            this.lastEngine.currentWordIndex,
+            this.lastEngine.typedBuffer.length,
+            this.lastEngine.errorFlash
+          );
+        }
+      });
     };
     window.addEventListener('resize', remeasureCaret);
     // Late-loading web fonts change glyph widths, invalidating measured positions
@@ -386,9 +394,20 @@ export class HudView {
       this.streamEl.innerHTML = '';
       this.streamEl.appendChild(fragment);
       this.activeWordIndex = -1;
-      this.caretStops = null;
       this.lastScrollTop = 0;
       this.streamEl.scrollTop = 0;
+      this.caretTracker.init(caret, this.streamEl, this.wordMetas);
+
+      // Reset dirty tracking caches for new match
+      this.lastTugP1Percent = -1;
+      this.lastTugRoundP1 = -1;
+      this.lastWpm = -1;
+      this.lastAcc = -1;
+      this.lastCombo = -1;
+      this.lastOppWpm = -1;
+      this.lastOppWords = '';
+      this.lastZenPct = -1;
+      this.lastZenWords = '';
     }
   }
 
@@ -396,81 +415,27 @@ export class HudView {
     const p1Percent = Math.max(0, Math.min(100, (1 - (tugPosition + 1) / 2) * 100));
     const p2Percent = 100 - p1Percent;
 
-    if (this.tugP1Bar) {
-      this.tugP1Bar.style.transform = `scaleX(${p1Percent / 100})`;
-    }
-    if (this.tugP2Bar) {
-      this.tugP2Bar.style.transform = `scaleX(${p2Percent / 100})`;
-    }
-    if (this.tugIndicator) {
-      this.tugIndicator.style.transform = `translate3d(calc(${p1Percent}% - 5px), 0, 0)`;
-    }
-    if (this.tugLabel) {
-      this.tugLabel.textContent = `${Math.round(p1Percent)}% // ${Math.round(p2Percent)}%`;
-    }
-  }
-
-  // Computes pixel bounding offset of target relative to stream container
-  private getElementRelativePos(target: HTMLElement): { left: number; top: number; width: number; height: number } {
-    let left = 0;
-    let top = 0;
-    const width = target.offsetWidth;
-    const height = target.offsetHeight;
-
-    let current: HTMLElement | null = target;
-    while (current && current !== this.streamEl) {
-      left += current.offsetLeft;
-      top += current.offsetTop;
-      current = current.offsetParent as HTMLElement | null;
-    }
-    return { left, top, width, height };
-  }
-
-  private measureCaretStops(meta: WordMeta): CaretStop[] {
-    const toStop = (left: number, pos: { top: number; height: number }): CaretStop => ({
-      x: left,
-      y: pos.top + 4,
-      h: Math.max(18, pos.height - 8),
-    });
-    const stops = meta.charSpans.map((span) => {
-      const pos = this.getElementRelativePos(span);
-      return toStop(pos.left, pos);
-    });
-    const last = this.getElementRelativePos(meta.charSpans[meta.charSpans.length - 1]);
-    stops.push(toStop(last.left + last.width, last));
-    return stops;
-  }
-
-  // Updates floating smooth caret position without touching any character DOM or innerHTML
-  private updateCaretPosition(engine: TypingEngine): void {
-    if (!this.caretEl || this.wordMetas.length === 0) return;
-
-    const currentWordIdx = engine.currentWordIndex;
-    const buffer = engine.typedBuffer;
-
-    if (currentWordIdx < this.wordMetas.length) {
-      const meta = this.wordMetas[currentWordIdx];
-      const charCount = meta.charSpans.length;
-      if (charCount === 0) return;
-
-      if (!this.caretStops) {
-        this.caretStops = this.measureCaretStops(meta);
+    // Fast-path GPU layer transforms only when position changes perceptibly
+    if (Math.abs(p1Percent - this.lastTugP1Percent) >= 0.05) {
+      this.lastTugP1Percent = p1Percent;
+      if (this.tugP1Bar) {
+        this.tugP1Bar.style.transform = `scaleX(${p1Percent / 100})`;
       }
-      // Once the word is fully typed (waiting for Space) the caret rests right after its last char
-      const stop = this.caretStops[Math.min(buffer.length, charCount)];
-
-      this.caretEl.style.transform = `translate3d(${stop.x}px, ${stop.y}px, 0)`;
-      this.caretEl.style.height = `${stop.h}px`;
-      this.caretEl.style.opacity = '1';
-
-      if (engine.errorFlash) {
-        this.caretEl.classList.add('caret-flash');
-      } else {
-        this.caretEl.classList.remove('caret-flash');
+      if (this.tugP2Bar) {
+        this.tugP2Bar.style.transform = `scaleX(${p2Percent / 100})`;
       }
-    } else {
-      // Completed all words in passage
-      this.caretEl.style.opacity = '0';
+      if (this.tugIndicator) {
+        this.tugIndicator.style.transform = `translate3d(calc(${p1Percent}% - 5px), 0, 0)`;
+      }
+    }
+
+    // Only modify DOM text node when integer percentage shifts
+    const roundP1 = Math.round(p1Percent);
+    if (roundP1 !== this.lastTugRoundP1) {
+      this.lastTugRoundP1 = roundP1;
+      if (this.tugLabel) {
+        this.tugLabel.textContent = `${roundP1}% // ${100 - roundP1}%`;
+      }
     }
   }
 
@@ -489,37 +454,30 @@ export class HudView {
         const hasError = prev.charSpans.some(
           (cs) => cs.classList.contains('char-error') || cs.classList.contains('char-pending')
         );
-        if (hasError) {
-          prev.container.className = 'passage-word word-completed word-error';
-          for (const cs of prev.charSpans) {
-            if (cs.classList.contains('char-pending')) {
-              cs.className = 'char char-error';
-            }
-          }
-        } else {
-          prev.container.className = 'passage-word word-completed';
-          for (const cs of prev.charSpans) {
-            cs.className = 'char char-correct';
+        const compClass = hasError ? 'passage-word word-completed word-error' : 'passage-word word-completed';
+        if (prev.container.className !== compClass) {
+          prev.container.className = compClass;
+        }
+        for (const cs of prev.charSpans) {
+          const targetCharClass = hasError && cs.classList.contains('char-pending')
+            ? 'char char-error'
+            : (hasError ? cs.className : 'char char-correct');
+          if (cs.className !== targetCharClass) {
+            cs.className = targetCharClass;
           }
         }
       }
 
       this.activeWordIndex = currentWordIdx;
-      this.caretStops = null;
 
       if (currentWordIdx < this.wordMetas.length) {
         const activeMeta = this.wordMetas[currentWordIdx];
-        activeMeta.container.className = 'passage-word current-word-wrapper';
+        if (activeMeta.container.className !== 'passage-word current-word-wrapper') {
+          activeMeta.container.className = 'passage-word current-word-wrapper';
+        }
 
-        // Consistent line-by-line scrolling: keeps the active line in comfortable center view
-        const firstTop = this.wordMetas[0].container.offsetTop;
-        const activeTop = activeMeta.container.offsetTop;
-        const lineHeight = activeMeta.container.offsetHeight || 35;
-        const lineDiff = activeTop - firstTop;
-        const lineIndex = Math.round(lineDiff / lineHeight);
-
-        // Lines 0 and 1 stay at scrollTop = 0. Line 2+ scrolls up by 1 line height so active line is always middle row
-        const targetScroll = lineIndex >= 2 ? Math.round((lineIndex - 1) * lineHeight) : 0;
+        // Consistent line-by-line scrolling without forced synchronous reflows
+        const { targetScroll } = this.caretTracker.getLineScrollOffset(currentWordIdx);
         if (targetScroll !== this.lastScrollTop) {
           this.lastScrollTop = targetScroll;
           this.streamEl.scrollTo({ top: targetScroll, behavior: reducedMotion.matches ? 'auto' : 'smooth' });
@@ -527,7 +485,7 @@ export class HudView {
       }
     }
 
-    // Incremental character styling strictly inside active word
+    // Incremental character styling strictly inside active word with dirty checking
     if (currentWordIdx < this.wordMetas.length) {
       const meta = this.wordMetas[currentWordIdx];
       const word = meta.expectedWord;
@@ -535,19 +493,23 @@ export class HudView {
 
       for (let i = 0; i < charCount; i++) {
         const span = meta.charSpans[i];
+        let targetClass: string;
         if (i < buffer.length) {
           const isCorrect = buffer[i] === word[i];
-          span.className = `char ${isCorrect ? 'char-correct' : 'char-error'}`;
+          targetClass = `char ${isCorrect ? 'char-correct' : 'char-error'}`;
         } else if (i === buffer.length) {
-          span.className = engine.errorFlash ? 'char char-error-flash' : 'char char-target';
+          targetClass = engine.errorFlash ? 'char char-error-flash' : 'char char-target';
         } else {
-          span.className = 'char char-pending';
+          targetClass = 'char char-pending';
+        }
+        if (span.className !== targetClass) {
+          span.className = targetClass;
         }
       }
     }
 
-    // Reposition floating caret smoothly
-    this.updateCaretPosition(engine);
+    // Reposition floating caret smoothly via zero-reflow CaretTracker
+    this.caretTracker.update(currentWordIdx, buffer.length, engine.errorFlash);
 
     // Overheat shake
     if (this.typingBoxEl) {
@@ -560,10 +522,17 @@ export class HudView {
   }
 
   public updateStats(p1Stats: TypingStats, oppStats?: OpponentStats): void {
-    if (this.wpmEl) this.wpmEl.textContent = `${p1Stats.wpm}`;
-    if (this.accEl) this.accEl.textContent = `${p1Stats.accuracy}%`;
+    if (this.wpmEl && p1Stats.wpm !== this.lastWpm) {
+      this.lastWpm = p1Stats.wpm;
+      this.wpmEl.textContent = `${p1Stats.wpm}`;
+    }
+    if (this.accEl && p1Stats.accuracy !== this.lastAcc) {
+      this.lastAcc = p1Stats.accuracy;
+      this.accEl.textContent = `${p1Stats.accuracy}%`;
+    }
 
-    if (this.comboWrapEl && this.comboEl) {
+    if (this.comboWrapEl && this.comboEl && p1Stats.combo !== this.lastCombo) {
+      this.lastCombo = p1Stats.combo;
       if (p1Stats.combo > 1) {
         this.comboWrapEl.classList.remove('hidden');
         this.comboEl.textContent = `${p1Stats.combo}X`;
@@ -573,16 +542,32 @@ export class HudView {
     }
 
     if (oppStats) {
-      if (this.oppWpmEl) this.oppWpmEl.textContent = `${Math.round(oppStats.wpm)}`;
-      if (this.oppWordsEl) this.oppWordsEl.textContent = `${oppStats.wordsCompleted}/${oppStats.totalWords}`;
+      const oppWpmRound = Math.round(oppStats.wpm);
+      if (this.oppWpmEl && oppWpmRound !== this.lastOppWpm) {
+        this.lastOppWpm = oppWpmRound;
+        this.oppWpmEl.textContent = `${oppWpmRound}`;
+      }
+      const oppWordsStr = `${oppStats.wordsCompleted}/${oppStats.totalWords}`;
+      if (this.oppWordsEl && oppWordsStr !== this.lastOppWords) {
+        this.lastOppWords = oppWordsStr;
+        this.oppWordsEl.textContent = oppWordsStr;
+      }
     }
   }
 
   public updateZenProgress(wordsCompleted: number, totalWords: number): void {
     const pct = totalWords > 0 ? Math.min(100, Math.round((wordsCompleted / totalWords) * 100)) : 0;
-    if (this.zenFillEl) this.zenFillEl.style.width = `${pct}%`;
-    if (this.zenPctEl) this.zenPctEl.textContent = `${pct}%`;
-    if (this.zenWordsEl) this.zenWordsEl.textContent = `${wordsCompleted} / ${totalWords} WORDS`;
-    if (this.zenStatEl) this.zenStatEl.textContent = `${wordsCompleted} / ${totalWords}`;
+    if (pct !== this.lastZenPct) {
+      this.lastZenPct = pct;
+      if (this.zenFillEl) this.zenFillEl.style.width = `${pct}%`;
+      if (this.zenPctEl) this.zenPctEl.textContent = `${pct}%`;
+    }
+
+    const wordsStr = `${wordsCompleted} / ${totalWords}`;
+    if (wordsStr !== this.lastZenWords) {
+      this.lastZenWords = wordsStr;
+      if (this.zenWordsEl) this.zenWordsEl.textContent = `${wordsStr} WORDS`;
+      if (this.zenStatEl) this.zenStatEl.textContent = wordsStr;
+    }
   }
 }
