@@ -259,6 +259,25 @@ body {
   filter: brightness(1.1);
 }
 
+.btn-cyber-primary:disabled {
+  background: #141e30;
+  color: #5d6e8a;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+  filter: none !important;
+  opacity: 0.65;
+}
+
+.btn-cyber-primary.glow-pulse {
+  animation: glowPulseBtn 1.8s infinite;
+}
+
+@keyframes glowPulseBtn {
+  0%, 100% { box-shadow: 0 0 16px rgba(0, 240, 255, 0.45); }
+  50% { box-shadow: 0 0 32px rgba(0, 240, 255, 0.95), 0 0 12px #00ffaa; }
+}
+
 .btn-cyber-secondary {
   background: #0c162e;
   color: var(--text-primary);

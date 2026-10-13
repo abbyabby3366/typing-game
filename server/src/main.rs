@@ -160,14 +160,43 @@ async fn leave_room(
         if let Some(h) = room.bot_abort_handle.take() {
             h.abort();
         }
-        room.state = RoomState::Finished;
         match role {
-            PlayerRole::Player1 => room.p1 = None,
-            PlayerRole::Player2 => room.p2 = None,
+            PlayerRole::Player1 => {
+                room.p1 = None;
+                room.state = RoomState::Finished;
+                room.broadcast(ServerMsg::OpponentLeft);
+                true
+            }
+            PlayerRole::Player2 => {
+                room.p2 = None;
+                if room.p1.is_some() && !room.is_bot_match {
+                    room.state = RoomState::WaitingForOpponent;
+                    room.tug_position = 0.0;
+                    if let Some(ref p1) = room.p1 {
+                        room.p1_stats.name = p1.name.clone();
+                    }
+                    room.p1_stats.words_completed = 0;
+                    room.p1_stats.chars_typed = 0;
+                    room.p1_stats.wpm = 0.0;
+                    room.p1_stats.accuracy = 100.0;
+                    room.p1_stats.max_combo = 0;
+                    room.p2_stats = PlayerStats { name: "Opponent".to_string(), wpm: 0.0, accuracy: 100.0, max_combo: 0, words_completed: 0, chars_typed: 0 };
+                    room.p1_rematch = false;
+                    room.p2_rematch = false;
+
+                    let (title, text, words) = passages::get_passage_by_category(&room.settings.category, room.settings.custom_text.as_deref());
+                    room.passage_title = title;
+                    room.passage_text = text;
+                    room.words = words;
+
+                    room.broadcast(ServerMsg::OpponentLeft);
+                    false
+                } else {
+                    room.state = RoomState::Finished;
+                    true
+                }
+            }
         }
-        room.broadcast(ServerMsg::OpponentLeft);
-        // Bot matches keep the bot in the p2 slot, so they are empty once p1 leaves
-        room.p1.is_none() && (room.p2.is_none() || room.is_bot_match)
     };
 
     if should_remove {
@@ -372,6 +401,31 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
 
                 if let Some(room_arc) = room_opt {
                     let mut room = room_arc.write().await;
+
+                    // Prune any stale disconnected sessions
+                    if let Some(ref p1) = room.p1 {
+                        if p1.tx.is_closed() {
+                            room.p1 = None;
+                        }
+                    }
+                    if let Some(ref p2) = room.p2 {
+                        if p2.tx.is_closed() {
+                            room.p2 = None;
+                            if room.p1.is_some() {
+                                room.state = RoomState::WaitingForOpponent;
+                            }
+                        }
+                    }
+
+                    if room.p1.is_none() {
+                        drop(room);
+                        state.rooms.write().await.remove(&code_upper);
+                        let _ = tx.send(ServerMsg::ErrorAlert {
+                            message: format!("Room code '{}' not found.", code_upper),
+                        });
+                        continue;
+                    }
+
                     if room.p2.is_some() || room.state != RoomState::WaitingForOpponent {
                         let _ = tx.send(ServerMsg::ErrorAlert {
                             message: "Room is already full or battle in progress.".to_string(),
@@ -394,7 +448,6 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
 
                     room.p2 = Some(session);
                     room.p2_stats.name = player_name.clone();
-                    room.state = RoomState::Active;
 
                     current_room_code = Some(code_upper.clone());
                     current_room_arc = Some(room_arc.clone());
@@ -414,18 +467,25 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                             opponent_name: player_name,
                         });
                     }
-
-                    // Start match countdown
-                    room.broadcast(ServerMsg::GameStarting {
-                        countdown_seconds: 3,
-                        passage_title: room.passage_title.clone(),
-                        passage_text: room.passage_text.clone(),
-                        words: room.words.clone(),
-                    });
                 } else {
                     let _ = tx.send(ServerMsg::ErrorAlert {
                         message: format!("Room code '{}' not found.", code_upper),
                     });
+                }
+            }
+
+            ClientMsg::StartDuel => {
+                if let (Some(ref room_arc), Some(PlayerRole::Player1)) = (&current_room_arc, player_role) {
+                    let mut room = room_arc.write().await;
+                    if room.p2.is_some() && room.state == RoomState::WaitingForOpponent {
+                        room.state = RoomState::Active;
+                        room.broadcast(ServerMsg::GameStarting {
+                            countdown_seconds: 3,
+                            passage_title: room.passage_title.clone(),
+                            passage_text: room.passage_text.clone(),
+                            words: room.words.clone(),
+                        });
+                    }
                 }
             }
 

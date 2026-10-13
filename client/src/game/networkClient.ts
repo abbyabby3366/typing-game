@@ -22,6 +22,7 @@ export type ClientMsg =
   | { type: 'TypoPenalized'; payload: { combo_lost: number } }
   | { type: 'TypingProgress'; payload: { char_index: number; word_index: number; wpm: number; accuracy: number; combo: number } }
   | { type: 'RequestRematch' }
+  | { type: 'StartDuel' }
   | { type: 'LeaveRoom' };
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected';

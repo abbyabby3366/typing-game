@@ -22,6 +22,9 @@ export class TypingEngine {
   public errorFlash: boolean = false;
   private errorFlashTimer: number | null = null;
 
+  public wordHistory: string[] = [];
+  public wordScored: boolean[] = [];
+
   private correctKeystrokes: number = 0;
   private totalKeystrokes: number = 0;
   private startTime: number | null = null;
@@ -42,6 +45,8 @@ export class TypingEngine {
     this.errorMode = errorMode;
     this.currentWordIndex = 0;
     this.typedBuffer = '';
+    this.wordHistory = new Array(words.length).fill('');
+    this.wordScored = new Array(words.length).fill(false);
     this.correctKeystrokes = 0;
     this.totalKeystrokes = 0;
     this.startTime = null;
@@ -106,7 +111,28 @@ export class TypingEngine {
 
       if (isWordDelete) {
         if (this.typedBuffer.length > 0) {
+          for (let i = 0; i < this.typedBuffer.length; i++) {
+            if (i < targetWord.length && this.typedBuffer[i] === targetWord[i]) {
+              this.correctKeystrokes = Math.max(0, this.correctKeystrokes - 1);
+            }
+          }
           this.typedBuffer = '';
+          this.wordHistory[this.currentWordIndex] = '';
+          this.clearErrorFlash();
+          this.onStateChanged?.();
+          return true;
+        } else if (this.currentWordIndex > 0) {
+          // Empty buffer with word-delete: go back to previous word and clear it
+          this.currentWordIndex--;
+          const prevTarget = this.words[this.currentWordIndex];
+          const prevTyped = this.wordHistory[this.currentWordIndex] || '';
+          for (let i = 0; i < prevTyped.length; i++) {
+            if (i < prevTarget.length && prevTyped[i] === prevTarget[i]) {
+              this.correctKeystrokes = Math.max(0, this.correctKeystrokes - 1);
+            }
+          }
+          this.typedBuffer = '';
+          this.wordHistory[this.currentWordIndex] = '';
           this.clearErrorFlash();
           this.onStateChanged?.();
           return true;
@@ -115,7 +141,20 @@ export class TypingEngine {
       }
 
       if (this.typedBuffer.length > 0) {
+        const charIdx = this.typedBuffer.length - 1;
+        const removedChar = this.typedBuffer[charIdx];
+        if (charIdx < targetWord.length && removedChar === targetWord[charIdx]) {
+          this.correctKeystrokes = Math.max(0, this.correctKeystrokes - 1);
+        }
         this.typedBuffer = this.typedBuffer.slice(0, -1);
+        this.wordHistory[this.currentWordIndex] = this.typedBuffer;
+        this.clearErrorFlash();
+        this.onStateChanged?.();
+        return true;
+      } else if (this.currentWordIndex > 0) {
+        // Continuous backspace all the way back across words
+        this.currentWordIndex--;
+        this.typedBuffer = this.wordHistory[this.currentWordIndex] || '';
         this.clearErrorFlash();
         this.onStateChanged?.();
         return true;
@@ -144,8 +183,7 @@ export class TypingEngine {
         this.registerWrongKey();
         return true;
       } else {
-        // Allow Errors mode: allow users to continue to type!
-        // The wrong word won't send any damage, only correct words send damage
+        // Allow Errors mode: allow users to continue to type without locking
         if (this.typedBuffer.length > 0) {
           soundEngine.playKeystroke(true);
           this.completeWord(targetWord, false);
@@ -159,44 +197,54 @@ export class TypingEngine {
 
     const nextCharIndex = this.typedBuffer.length;
 
-    // Buffer can never grow past the word length (prevents display drift)
-    if (nextCharIndex >= targetWord.length) {
-      this.registerWrongKey();
-      return true;
-    }
+    if (nextCharIndex < targetWord.length) {
+      const expectedChar = targetWord[nextCharIndex];
+      const isCorrect = char === expectedChar;
 
-    const expectedChar = targetWord[nextCharIndex];
-    const isCorrect = char === expectedChar;
+      this.typedBuffer += char;
+      this.wordHistory[this.currentWordIndex] = this.typedBuffer;
 
-    // In BOTH modes: allow typing characters into buffer so typos are highlighted in red
-    this.typedBuffer += char;
-    if (isCorrect) {
-      this.correctKeystrokes++;
-      this.clearErrorFlash();
+      if (isCorrect) {
+        this.correctKeystrokes++;
+        soundEngine.playKeystroke(false);
+        this.clearErrorFlash();
+      } else {
+        this.registerWrongKey(false);
+      }
     } else {
-      this.registerWrongKey(false);
+      // Allow extra overflow characters (up to 25 extra chars) so typing never locks up
+      if (this.typedBuffer.length < targetWord.length + 25) {
+        this.typedBuffer += char;
+        this.wordHistory[this.currentWordIndex] = this.typedBuffer;
+        this.registerWrongKey(false);
+      }
     }
 
-    // Never auto-complete: the player must press space to advance to the next word
     this.onStateChanged?.();
     return true;
   }
 
   private completeWord(word: string, isCorrect: boolean = true): void {
+    this.wordHistory[this.currentWordIndex] = this.typedBuffer;
+    const alreadyScored = this.wordScored[this.currentWordIndex];
+
     if (isCorrect) {
-      this.currentCombo++;
-      if (this.currentCombo > this.maxCombo) {
-        this.maxCombo = this.currentCombo;
+      if (!alreadyScored) {
+        this.wordScored[this.currentWordIndex] = true;
+        this.currentCombo++;
+        if (this.currentCombo > this.maxCombo) {
+          this.maxCombo = this.currentCombo;
+        }
       }
     } else {
       this.currentCombo = 0;
     }
 
     const stats = this.getStats();
-    this.onWordCompleted?.(word, this.currentWordIndex, this.currentCombo, stats.wpm, stats.accuracy, isCorrect);
+    this.onWordCompleted?.(word, this.currentWordIndex, this.currentCombo, stats.wpm, stats.accuracy, isCorrect && !alreadyScored);
 
     this.currentWordIndex++;
-    this.typedBuffer = '';
+    this.typedBuffer = this.wordHistory[this.currentWordIndex] || '';
     this.clearErrorFlash();
     this.onStateChanged?.();
   }

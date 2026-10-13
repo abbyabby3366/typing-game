@@ -388,6 +388,7 @@ export class HudView {
           container: wordContainer,
           expectedWord: word,
           charSpans,
+          extraSpans: [],
         };
       });
 
@@ -443,40 +444,32 @@ export class HudView {
   public updateTypingDisplay(engine: TypingEngine): void {
     if (!this.streamEl || this.wordMetas.length === 0) return;
     this.lastEngine = engine;
-
     const currentWordIdx = engine.currentWordIndex;
     const buffer = engine.typedBuffer;
 
-    // Transition active word container
     if (currentWordIdx !== this.activeWordIndex) {
-      if (this.activeWordIndex >= 0 && this.activeWordIndex < this.wordMetas.length) {
-        const prev = this.wordMetas[this.activeWordIndex];
-        const hasError = prev.charSpans.some(
-          (cs) => cs.classList.contains('char-error') || cs.classList.contains('char-pending')
-        );
-        const compClass = hasError ? 'passage-word word-completed word-error' : 'passage-word word-completed';
-        if (prev.container.className !== compClass) {
-          prev.container.className = compClass;
-        }
-        for (const cs of prev.charSpans) {
-          const targetCharClass = hasError && cs.classList.contains('char-pending')
-            ? 'char char-error'
-            : (hasError ? cs.className : 'char char-correct');
-          if (cs.className !== targetCharClass) {
-            cs.className = targetCharClass;
+      if (currentWordIdx > this.activeWordIndex && this.activeWordIndex >= 0) {
+        for (let w = this.activeWordIndex; w < currentWordIdx && w < this.wordMetas.length; w++) {
+          const meta = this.wordMetas[w];
+          const typed = engine.wordHistory[w] || '';
+          meta.container.className = typed !== meta.expectedWord ? 'passage-word word-completed word-error' : 'passage-word word-completed';
+          for (let i = 0; i < meta.charSpans.length; i++) {
+            meta.charSpans[i].className = i < typed.length && typed[i] === meta.expectedWord[i] ? 'char char-correct' : 'char char-error';
           }
+        }
+      } else if (currentWordIdx < this.activeWordIndex) {
+        for (let w = currentWordIdx + 1; w <= this.activeWordIndex && w < this.wordMetas.length; w++) {
+          const meta = this.wordMetas[w];
+          meta.container.className = 'passage-word';
+          meta.charSpans.forEach((cs) => (cs.className = 'char char-pending'));
+          meta.extraSpans?.forEach((es) => es.remove());
+          meta.extraSpans = [];
         }
       }
 
       this.activeWordIndex = currentWordIdx;
-
       if (currentWordIdx < this.wordMetas.length) {
-        const activeMeta = this.wordMetas[currentWordIdx];
-        if (activeMeta.container.className !== 'passage-word current-word-wrapper') {
-          activeMeta.container.className = 'passage-word current-word-wrapper';
-        }
-
-        // Consistent line-by-line scrolling without forced synchronous reflows
+        this.wordMetas[currentWordIdx].container.className = 'passage-word current-word-wrapper';
         const { targetScroll } = this.caretTracker.getLineScrollOffset(currentWordIdx);
         if (targetScroll !== this.lastScrollTop) {
           this.lastScrollTop = targetScroll;
@@ -485,39 +478,36 @@ export class HudView {
       }
     }
 
-    // Incremental character styling strictly inside active word with dirty checking
     if (currentWordIdx < this.wordMetas.length) {
       const meta = this.wordMetas[currentWordIdx];
       const word = meta.expectedWord;
       const charCount = meta.charSpans.length;
 
       for (let i = 0; i < charCount; i++) {
-        const span = meta.charSpans[i];
-        let targetClass: string;
-        if (i < buffer.length) {
-          const isCorrect = buffer[i] === word[i];
-          targetClass = `char ${isCorrect ? 'char-correct' : 'char-error'}`;
-        } else if (i === buffer.length) {
-          targetClass = engine.errorFlash ? 'char char-error-flash' : 'char char-target';
-        } else {
-          targetClass = 'char char-pending';
-        }
-        if (span.className !== targetClass) {
-          span.className = targetClass;
-        }
+        const targetClass = i < buffer.length
+          ? (buffer[i] === word[i] ? 'char char-correct' : 'char char-error')
+          : (i === buffer.length ? (engine.errorFlash ? 'char char-error-flash' : 'char char-target') : 'char char-pending');
+        if (meta.charSpans[i].className !== targetClass) meta.charSpans[i].className = targetClass;
+      }
+
+      if (!meta.extraSpans) meta.extraSpans = [];
+      const extraCount = Math.max(0, buffer.length - charCount);
+      while (meta.extraSpans.length < extraCount) {
+        const span = document.createElement('span');
+        span.className = 'char char-error char-extra';
+        span.textContent = buffer[charCount + meta.extraSpans.length];
+        meta.container.appendChild(span);
+        meta.extraSpans.push(span);
+      }
+      while (meta.extraSpans.length > extraCount) meta.extraSpans.pop()?.remove();
+      for (let k = 0; k < extraCount; k++) {
+        if (meta.extraSpans[k].textContent !== buffer[charCount + k]) meta.extraSpans[k].textContent = buffer[charCount + k];
       }
     }
 
-    // Reposition floating caret smoothly via zero-reflow CaretTracker
     this.caretTracker.update(currentWordIdx, buffer.length, engine.errorFlash);
-
-    // Overheat shake
     if (this.typingBoxEl) {
-      if (engine.isOverheated) {
-        this.typingBoxEl.classList.add('overheat-flash');
-      } else {
-        this.typingBoxEl.classList.remove('overheat-flash');
-      }
+      this.typingBoxEl.classList.toggle('overheat-flash', engine.isOverheated);
     }
   }
 

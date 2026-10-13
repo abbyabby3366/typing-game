@@ -18,6 +18,7 @@ export class WaitingRoomView {
   private container: HTMLElement;
   public onUpdateSettings?: (config: RoomSettingsConfig) => void;
   public onCancelRoom?: () => void;
+  public onStartDuel?: () => void;
 
   private roomCode: string = '';
   private isHost: boolean = true;
@@ -34,10 +35,10 @@ export class WaitingRoomView {
     this.container = container;
   }
 
-  public render(roomCode: string, isHost: boolean = true, initialSettings?: any): void {
+  public render(roomCode: string, isHost: boolean = true, initialSettings?: any, opponentName?: string): void {
     this.roomCode = roomCode;
     this.isHost = isHost;
-    this.opponentName = null;
+    this.opponentName = opponentName || null;
 
     if (initialSettings) {
       if (initialSettings.error_mode) {
@@ -66,7 +67,7 @@ export class WaitingRoomView {
             <p class="lobby-subtitle">Private Duel Arena // Challenge conduit ready for rival</p>
           </div>
           <div class="pilot-capsule">
-            <span class="pilot-capsule-tag">HOST</span>
+            <span class="pilot-capsule-tag">${this.isHost ? 'HOST' : 'CHALLENGER'}</span>
             <span style="color: #ffffff; font-family: var(--font-mono); font-size: 0.88rem; font-weight: 700;">${escapeHtml(savedName)}</span>
           </div>
         </div>
@@ -87,8 +88,16 @@ export class WaitingRoomView {
           </div>
 
           <div id="room-challenger-status" style="margin-top: 14px; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--text-secondary); font-family: var(--font-mono); font-size: 0.82rem;">
-            <span class="status-dot" style="background: var(--cyan-primary); animation: blink-caret 1s infinite;"></span>
-            <span>WAITING FOR CHALLENGER TO LOCK IN...</span>
+            ${
+              !this.isHost
+                ? `<span class="status-dot" style="background: #00ffaa; box-shadow: 0 0 10px #00ffaa;"></span>
+                   <span style="color: #00ffaa; font-weight: 700;">CONNECTED TO HOST ${escapeHtml((this.opponentName || 'HOST').toUpperCase())}! WAITING FOR HOST TO START...</span>`
+                : this.opponentName
+                ? `<span class="status-dot" style="background: #00ffaa; box-shadow: 0 0 10px #00ffaa;"></span>
+                   <span style="color: #00ffaa; font-weight: 700;">CHALLENGER ${escapeHtml(this.opponentName.toUpperCase())} ENGAGED! READY TO START.</span>`
+                : `<span class="status-dot" style="background: var(--cyan-primary); animation: blink-caret 1s infinite;"></span>
+                   <span>WAITING FOR CHALLENGER TO LOCK IN...</span>`
+            }
           </div>
         </div>
 
@@ -101,7 +110,7 @@ export class WaitingRoomView {
                 DUEL CONFIGURATION
               </span>
               <span style="font-family: var(--font-mono); font-size: 0.65rem; color: var(--cyan-primary); background: rgba(0, 240, 255, 0.1); border: 1px solid rgba(0, 240, 255, 0.3); border-radius: 2px; padding: 2px 6px;">
-                HOST CONTROLS
+                ${this.isHost ? 'HOST CONTROLS' : 'HOST CONTROLLED'}
               </span>
             </div>
             <div id="room-sync-badge" style="font-family: var(--font-mono); font-size: 0.72rem; color: #00ffaa; display: flex; align-items: center; gap: 6px;">
@@ -167,13 +176,25 @@ export class WaitingRoomView {
         </div>
 
         <!-- Footer Actions -->
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
-          <button id="btn-cancel-room" type="button" class="btn-cyber-danger" style="padding: 10px 20px; font-size: 0.85rem;">
-            CANCEL DUEL
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; gap: 16px; flex-wrap: wrap;">
+          <button id="btn-cancel-room" type="button" class="btn-cyber-danger" style="padding: 11px 22px; font-size: 0.85rem;">
+            ${this.isHost ? 'CANCEL DUEL' : 'LEAVE DUEL'}
           </button>
-          <span style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-muted);">
-            Duel countdown starts automatically once challenger joins
-          </span>
+          ${
+            this.isHost
+              ? `<div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
+                   <button id="btn-start-duel" type="button" class="btn-cyber-primary ${this.opponentName ? 'glow-pulse' : ''}" ${this.opponentName ? '' : 'disabled'} style="padding: 12px 34px; font-size: 0.95rem; font-weight: 800; letter-spacing: 0.12em; display: inline-flex; align-items: center; gap: 8px;">
+                     ${ICONS.play(16)} START DUEL
+                   </button>
+                   <span id="start-duel-hint" style="font-family: var(--font-mono); font-size: 0.72rem; color: ${this.opponentName ? '#00ffaa' : 'var(--text-muted)'};">
+                     ${this.opponentName ? 'Challenger ready! Click Start Duel when ready.' : 'Waiting for challenger to connect...'}
+                   </span>
+                 </div>`
+              : `<div style="display: inline-flex; align-items: center; gap: 10px; font-family: var(--font-mono); font-size: 0.82rem; color: var(--cyan-primary); background: rgba(0, 240, 255, 0.08); border: 1px solid var(--border-cyan); border-radius: 4px; padding: 10px 20px;">
+                   <span class="status-dot" style="background: var(--cyan-primary); animation: blink-caret 1s infinite;"></span>
+                   <span>AWAITING HOST TO START DUEL...</span>
+                 </div>`
+          }
         </div>
       </div>
     `;
@@ -183,12 +204,44 @@ export class WaitingRoomView {
 
   public setOpponentJoined(opponentName: string): void {
     this.opponentName = opponentName;
+    soundEngine.playUiClick();
     const statusEl = this.container.querySelector('#room-challenger-status');
     if (statusEl) {
       statusEl.innerHTML = `
         <span class="status-dot" style="background: #00ffaa; box-shadow: 0 0 10px #00ffaa;"></span>
-        <span style="color: #00ffaa; font-weight: 700;">CHALLENGER ${escapeHtml(opponentName.toUpperCase())} ENGAGED! INITIATING ARENA CONDUIT...</span>
+        <span style="color: #00ffaa; font-weight: 700;">CHALLENGER ${escapeHtml(opponentName.toUpperCase())} ENGAGED! READY TO START.</span>
       `;
+    }
+    const startBtn = this.container.querySelector('#btn-start-duel') as HTMLButtonElement | null;
+    if (startBtn) {
+      startBtn.disabled = false;
+      startBtn.classList.add('glow-pulse');
+    }
+    const hint = this.container.querySelector('#start-duel-hint');
+    if (hint) {
+      hint.textContent = 'Challenger ready! Click Start Duel when ready.';
+      hint.setAttribute('style', 'font-family: var(--font-mono); font-size: 0.72rem; color: #00ffaa;');
+    }
+  }
+
+  public setOpponentLeft(): void {
+    this.opponentName = null;
+    const statusEl = this.container.querySelector('#room-challenger-status');
+    if (statusEl) {
+      statusEl.innerHTML = `
+        <span class="status-dot" style="background: var(--cyan-primary); animation: blink-caret 1s infinite;"></span>
+        <span>WAITING FOR CHALLENGER TO LOCK IN...</span>
+      `;
+    }
+    const startBtn = this.container.querySelector('#btn-start-duel') as HTMLButtonElement | null;
+    if (startBtn) {
+      startBtn.disabled = true;
+      startBtn.classList.remove('glow-pulse');
+    }
+    const hint = this.container.querySelector('#start-duel-hint');
+    if (hint) {
+      hint.textContent = 'Waiting for challenger to connect...';
+      hint.setAttribute('style', 'font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-muted);');
     }
   }
 
@@ -204,7 +257,27 @@ export class WaitingRoomView {
       }, 2000);
     });
 
-    // Cancel room
+    // Start duel button (Host only)
+    const startBtn = this.container.querySelector('#btn-start-duel') as HTMLButtonElement | null;
+    startBtn?.addEventListener('click', () => {
+      soundEngine.playUiClick();
+      if (startBtn) {
+        startBtn.disabled = true;
+        startBtn.innerHTML = `${ICONS.zap(16)} LAUNCHING...`;
+      }
+      this.onStartDuel?.();
+    });
+
+    if (!this.isHost) {
+      const modeGroup = this.container.querySelector('.mode-toggle-group') as HTMLElement;
+      if (modeGroup) modeGroup.style.pointerEvents = 'none';
+      const dropdownTrigger = this.container.querySelector('#dropdown-trigger-room') as HTMLElement;
+      if (dropdownTrigger) dropdownTrigger.style.pointerEvents = 'none';
+      const customTextarea = this.container.querySelector('#input-room-custom-text') as HTMLTextAreaElement;
+      if (customTextarea) customTextarea.readOnly = true;
+    }
+
+    // Cancel / Leave room
     const cancelBtn = this.container.querySelector('#btn-cancel-room');
     cancelBtn?.addEventListener('click', () => {
       soundEngine.playUiClick();

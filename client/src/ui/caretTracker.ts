@@ -8,6 +8,7 @@ export interface WordCaretMeta {
   container: HTMLElement;
   charSpans: HTMLElement[];
   expectedWord: string;
+  extraSpans?: HTMLElement[];
 }
 
 /**
@@ -146,13 +147,38 @@ export class CaretTracker {
     }
 
     const charCount = this.wordMetas[wordIdx].charSpans.length;
-    const stopIndex = Math.min(bufferLength, charCount);
-    const stop = stops[stopIndex];
-    if (!stop) return;
+    if (bufferLength <= charCount) {
+      const stopIndex = Math.min(bufferLength, charCount);
+      const stop = stops[stopIndex];
+      if (!stop) return;
 
-    this.caretEl.style.transform = `translate3d(${stop.x}px, ${stop.y}px, 0)`;
-    this.caretEl.style.height = `${stop.h}px`;
-    this.caretEl.style.opacity = '1';
+      this.caretEl.style.transform = `translate3d(${stop.x}px, ${stop.y}px, 0)`;
+      this.caretEl.style.height = `${stop.h}px`;
+      this.caretEl.style.opacity = '1';
+    } else {
+      const meta = this.wordMetas[wordIdx];
+      const extra = meta.extraSpans;
+      if (extra && extra.length > 0 && this.streamEl) {
+        const lastExtra = extra[extra.length - 1];
+        const spanRect = lastExtra.getBoundingClientRect();
+        const streamRect = this.streamEl.getBoundingClientRect();
+        const scrollTop = this.streamEl.scrollTop;
+        const scrollLeft = this.streamEl.scrollLeft;
+        const x = spanRect.right - streamRect.left + scrollLeft;
+        const y = spanRect.top - streamRect.top + scrollTop + 4;
+        const h = Math.max(18, spanRect.height - 8);
+        this.caretEl.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+        this.caretEl.style.height = `${h}px`;
+        this.caretEl.style.opacity = '1';
+      } else {
+        const stop = stops[charCount];
+        if (stop) {
+          this.caretEl.style.transform = `translate3d(${stop.x}px, ${stop.y}px, 0)`;
+          this.caretEl.style.height = `${stop.h}px`;
+          this.caretEl.style.opacity = '1';
+        }
+      }
+    }
 
     if (errorFlash) {
       this.caretEl.classList.add('caret-flash');

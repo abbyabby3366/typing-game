@@ -278,6 +278,11 @@
   border-radius: 2px;
 }
 
+.char-extra {
+  text-decoration: underline;
+  opacity: 0.9;
+}
+
 .char-error-flash {
   color: #ff2255;
   text-shadow: 0 0 10px rgba(255, 34, 85, 0.8);
@@ -589,4 +594,3 @@
   box-shadow: 0 0 8px var(--esc-accent);
   transition: width 0.04s linear;
 }
-

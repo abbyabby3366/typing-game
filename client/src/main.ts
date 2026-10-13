@@ -41,6 +41,7 @@ class App {
   private myName: string = 'PLAYER-1';
   private opponentName: string = 'RIVAL-2';
   private currentRoomCode: string = '';
+  private currentRoomSettings: any = null;
   private currentErrorMode: ErrorMode = 'allow_errors';
   private passageTitle: string = 'CYBER CLASH PROTOCOL';
   private isMatchActive: boolean = false;
@@ -66,16 +67,10 @@ class App {
     this.toastContainer = document.getElementById('toast-container')!;
     const modalContainer = document.getElementById('modal-container')!;
 
-    // Initialize 3D Engine
+    // Initialize 3D Engine & Game
     this.sceneManager = new SceneManager(this.canvas);
-    this.beamEffect = new BeamEffect(
-      this.sceneManager.scene,
-      this.sceneManager.p1CannonPos,
-      this.sceneManager.p2CannonPos
-    );
+    this.beamEffect = new BeamEffect(this.sceneManager.scene, this.sceneManager.p1CannonPos, this.sceneManager.p2CannonPos);
     this.projectileManager = new ProjectileManager(this.sceneManager.scene);
-
-    // Initialize Game & Network
     this.typingEngine = new TypingEngine();
     this.network = new NetworkClient();
 
@@ -140,6 +135,7 @@ class App {
         case 'RoomCreated':
           this.currentRoomCode = msg.payload.room_code;
           this.myRole = msg.payload.role;
+          this.currentRoomSettings = msg.payload.settings;
           this.currentErrorMode = msg.payload.settings.error_mode as ErrorMode;
           if (!this.isBotMatch) {
             this.updateUrlRoomCode(this.currentRoomCode);
@@ -148,6 +144,7 @@ class App {
           break;
 
         case 'RoomSettingsUpdated':
+          this.currentRoomSettings = msg.payload.settings;
           this.currentErrorMode = msg.payload.settings.error_mode as ErrorMode;
           break;
 
@@ -155,8 +152,10 @@ class App {
           this.currentRoomCode = msg.payload.room_code;
           this.myRole = msg.payload.role;
           this.opponentName = msg.payload.opponent_name;
+          this.currentRoomSettings = msg.payload.settings;
           this.currentErrorMode = msg.payload.settings.error_mode as ErrorMode;
           this.updateUrlRoomCode(this.currentRoomCode);
+          this.waitingRoomView.render(this.currentRoomCode, false, msg.payload.settings, this.opponentName);
           this.showToast(`Locked into Arena with ${this.opponentName}`);
           break;
 
@@ -167,12 +166,7 @@ class App {
           break;
 
         case 'GameStarting':
-          this.handleGameStarting(
-            msg.payload.countdown_seconds,
-            msg.payload.passage_title,
-            msg.payload.passage_text,
-            msg.payload.words
-          );
+          this.handleGameStarting(msg.payload.countdown_seconds, msg.payload.passage_title, msg.payload.passage_text, msg.payload.words);
           break;
 
         case 'WordFired':
@@ -198,19 +192,38 @@ class App {
 
         case 'RematchAgreed':
           this.modalView.hide();
-          this.handleGameStarting(
-            msg.payload.countdown_seconds,
-            msg.payload.passage_title,
-            msg.payload.passage_text,
-            msg.payload.words
-          );
+          this.handleGameStarting(msg.payload.countdown_seconds, msg.payload.passage_title, msg.payload.passage_text, msg.payload.words);
           break;
 
         case 'OpponentLeft':
-          this.showToast('Opponent disconnected from arena.', true);
-          this.isMatchActive = false;
-          soundEngine.stopBeamHum();
-          this.returnToLobby();
+          if (this.myRole === 'player1') {
+            if (this.countdownTimer !== null) {
+              clearInterval(this.countdownTimer);
+              this.countdownTimer = null;
+              document.querySelector('.countdown-overlay')?.remove();
+            }
+            this.isMatchActive = false;
+            this.typingEngine.stop();
+            soundEngine.stopBeamHum();
+            musicPlayer.stop();
+            this.modalView.hide();
+            this.beamEffect.setVisible(true);
+            if (this.currentRoomCode && this.currentRoomSettings) {
+              this.waitingRoomView.render(this.currentRoomCode, true, this.currentRoomSettings);
+            }
+            this.waitingRoomView.setOpponentLeft();
+            this.showToast('Challenger left the arena conduit.', true);
+          } else {
+            this.isMatchActive = false;
+            this.typingEngine.stop();
+            soundEngine.stopBeamHum();
+            musicPlayer.stop();
+            this.modalView.hide();
+            this.beamEffect.setVisible(true);
+            this.network.send({ type: 'LeaveRoom' });
+            this.returnToLobby();
+            this.showToast('Host left the arena. Room closed.', true);
+          }
           break;
 
         case 'ErrorAlert':
@@ -241,11 +254,17 @@ class App {
       });
     };
 
+    this.waitingRoomView.onStartDuel = () => {
+      this.network.send({ type: 'StartDuel' });
+    };
+
     this.waitingRoomView.onCancelRoom = () => {
       this.isMatchActive = false;
       this.activeSong = null;
+      const exitedCode = this.currentRoomCode;
+      const isP2 = this.myRole === 'player2';
       this.network.send({ type: 'LeaveRoom' });
-      this.returnToLobby();
+      this.returnToLobby(isP2 && !this.isBotMatch ? exitedCode : '');
     };
 
     this.lobbyView.onJoinRoom = (code, playerName) => {
@@ -263,14 +282,7 @@ class App {
       this.isZenMode = false;
       this.network.send({
         type: 'StartBotMatch',
-        payload: {
-          player_name: playerName,
-          bot_difficulty: difficulty,
-          custom_bot_wpm: difficulty === 'custom' ? customWpm : undefined,
-          error_mode: errorMode,
-          category,
-          custom_text: customText,
-        },
+        payload: { player_name: playerName, bot_difficulty: difficulty, custom_bot_wpm: difficulty === 'custom' ? customWpm : undefined, error_mode: errorMode, category, custom_text: customText },
       });
     };
 
@@ -310,6 +322,9 @@ class App {
     musicPlayer.stop();
     this.beamEffect.setVisible(true);
 
+    const exitedCode = this.currentRoomCode;
+    const isP2 = this.myRole === 'player2';
+
     if (this.isZenMode) {
       this.showToast('Exited Zen Flow session');
     } else {
@@ -318,7 +333,7 @@ class App {
       this.showToast('Match forfeited', true);
     }
     this.escapeManager.reset();
-    this.returnToLobby();
+    this.returnToLobby(isP2 && !this.isBotMatch ? exitedCode : '');
   }
 
   private initTypingHandlers(): void {
@@ -470,13 +485,7 @@ class App {
     tick();
   }
 
-  private handleWordFired(payload: {
-    player_role: 'player1' | 'player2';
-    word: string;
-    combo: number;
-    push_power: number;
-    new_tug_position: number;
-  }): void {
+  private handleWordFired(payload: { player_role: 'player1' | 'player2'; word: string; combo: number; push_power: number; new_tug_position: number }): void {
     const isP1 = payload.player_role === 'player1';
     this.lastTugPosition = payload.new_tug_position;
     this.beamEffect.setTugPosition(payload.new_tug_position);
@@ -485,14 +494,7 @@ class App {
 
     if (payload.player_role !== this.myRole && payload.push_power > 0) {
       const cannonPos = isP1 ? this.sceneManager.p1CannonPos : this.sceneManager.p2CannonPos;
-      this.projectileManager.fireWord(
-        payload.word,
-        isP1,
-        cannonPos,
-        this.beamEffect.currentClashX,
-        payload.combo,
-        payload.push_power
-      );
+      this.projectileManager.fireWord(payload.word, isP1, cannonPos, this.beamEffect.currentClashX, payload.combo, payload.push_power);
     }
   }
 
@@ -513,8 +515,10 @@ class App {
       () => { musicPlayer.stop(); this.network.send({ type: 'RequestRematch' }); },
       () => {
         musicPlayer.stop();
+        const exitedCode = this.currentRoomCode;
+        const isP2 = this.myRole === 'player2';
         this.network.send({ type: 'LeaveRoom' });
-        this.returnToLobby();
+        this.returnToLobby(isP2 && !this.isBotMatch ? exitedCode : '');
       }
     );
   }
@@ -530,24 +534,11 @@ class App {
     soundEngine.playVictoryExplosion();
 
     this.modalView.showZenComplete(
-      {
-        wpm: stats.wpm,
-        accuracy: stats.accuracy,
-        maxCombo: stats.maxCombo,
-        wordsCompleted: stats.wordsCompleted + 1,
-        charsTyped: stats.charsTyped,
-        elapsedSec: Math.max(1, elapsedSec),
-      },
+      { wpm: stats.wpm, accuracy: stats.accuracy, maxCombo: stats.maxCombo, wordsCompleted: stats.wordsCompleted + 1, charsTyped: stats.charsTyped, elapsedSec: Math.max(1, elapsedSec) },
       this.passageTitle,
       () => {
         if (this.lastZenConfig) {
-          this.lobbyView.onStartZen?.(
-            this.myName,
-            this.lastZenConfig.errorMode,
-            this.lastZenConfig.category,
-            this.lastZenConfig.customText,
-            this.lastZenConfig.selectedSong
-          );
+          this.lobbyView.onStartZen?.(this.myName, this.lastZenConfig.errorMode, this.lastZenConfig.category, this.lastZenConfig.customText, this.lastZenConfig.selectedSong);
         }
       },
       () => {
@@ -557,12 +548,12 @@ class App {
     );
   }
 
-  private returnToLobby(): void {
+  private returnToLobby(keepCode: string = ''): void {
     this.currentRoomCode = '';
     this.isBotMatch = false;
     this.isZenMode = false;
-    this.updateUrlRoomCode('');
-    this.lobbyView.render('');
+    this.updateUrlRoomCode(keepCode);
+    this.lobbyView.render(keepCode);
   }
 
   private checkUrlParams(): void {

@@ -99,6 +99,7 @@ pub enum ClientMsg {
         combo: u32,
     },
     RequestRematch,
+    StartDuel,
     LeaveRoom,
 }
 
