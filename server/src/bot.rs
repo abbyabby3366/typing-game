@@ -41,6 +41,8 @@ pub fn spawn_bot_task(
         };
 
         let mut combo = 0;
+        let mut total_chars_typed: usize = 0;
+        let mut total_typos: usize = 0;
 
         for (idx, word) in words.iter().enumerate() {
             // Check if game is still active
@@ -64,12 +66,21 @@ pub fn spawn_bot_task(
             };
 
             let delay_ms = ((base_secs * jitter * 1000.0) as u64).max(250);
-            let char_count = word.chars().count().max(1);
-            let char_step_ms = (delay_ms / (char_count as u64 + 1)).max(30);
+            let word_chars = word.chars().count().max(1);
+            let char_step_ms = (delay_ms / (word_chars as u64 + 1)).max(30);
+
+            total_chars_typed += char_count;
+            if has_typo {
+                total_typos += 1;
+            }
+            let live_accuracy = (((total_chars_typed.saturating_sub(total_typos)) as f32
+                / (total_chars_typed.max(1) as f32))
+                * 100.0)
+                .clamp(50.0, 100.0);
 
             // Stream incremental character progress
             let mut aborted = false;
-            for c_idx in 1..=char_count {
+            for c_idx in 1..=word_chars {
                 tokio::time::sleep(Duration::from_millis(char_step_ms)).await;
                 let r = room_arc.read().await;
                 if r.state != crate::room::RoomState::Active {
@@ -81,7 +92,7 @@ pub fn spawn_bot_task(
                     char_index: c_idx,
                     word_index: idx,
                     wpm: target_wpm * jitter,
-                    accuracy: if has_typo { 94.0 } else { 99.0 },
+                    accuracy: live_accuracy,
                     combo,
                 });
             }
@@ -95,6 +106,7 @@ pub fn spawn_bot_task(
 
             if has_typo {
                 combo = 0;
+                // Simulate backspacing and fixing the typo before completing the word
                 tokio::time::sleep(Duration::from_millis(200)).await;
             } else {
                 combo += 1;
@@ -109,11 +121,12 @@ pub fn spawn_bot_task(
             let word_copy = word.clone();
             let game_over_msg = room.handle_word_completed(
                 PlayerRole::Player2,
+                idx,
                 word_copy,
                 combo,
                 target_wpm * jitter,
-                if has_typo { 94.0 } else { 99.0 },
-                !has_typo,
+                live_accuracy,
+                true,
             );
 
             if let Some(msg) = game_over_msg {
@@ -127,7 +140,7 @@ pub fn spawn_bot_task(
                 char_index: 0,
                 word_index: idx + 1,
                 wpm: target_wpm * jitter,
-                accuracy: if has_typo { 94.0 } else { 99.0 },
+                accuracy: live_accuracy,
                 combo,
             });
         }

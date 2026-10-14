@@ -19,24 +19,38 @@ export interface WordCaretMeta {
  */
 export class CaretTracker {
   private caretEl: HTMLElement | null = null;
+  private oppCaretEl: HTMLElement | null = null;
   private streamEl: HTMLElement | null = null;
   private stopsCache: Map<number, CaretStop[]> = new Map();
   private wordMetas: WordCaretMeta[] = [];
   private wordLineScrolls: number[] = [];
   private typingTimer: number | null = null;
+  private lastOppWordIdx: number = -1;
+  private lastOppCharIdx: number = 0;
 
-  public init(caretEl: HTMLElement, streamEl: HTMLElement, wordMetas: WordCaretMeta[]): void {
+  public init(
+    caretEl: HTMLElement,
+    streamEl: HTMLElement,
+    wordMetas: WordCaretMeta[],
+    oppCaretEl: HTMLElement | null = null
+  ): void {
     this.caretEl = caretEl;
+    this.oppCaretEl = oppCaretEl;
     this.streamEl = streamEl;
     this.wordMetas = wordMetas;
     this.stopsCache.clear();
     this.wordLineScrolls = [];
+    this.lastOppWordIdx = -1;
+    this.lastOppCharIdx = 0;
 
     if (this.typingTimer !== null) {
       clearTimeout(this.typingTimer);
       this.typingTimer = null;
     }
     this.caretEl.classList.remove('caret-typing');
+    if (this.oppCaretEl) {
+      this.oppCaretEl.style.opacity = '0';
+    }
 
     this.precomputeLineScrolls();
 
@@ -52,6 +66,9 @@ export class CaretTracker {
   public invalidateCache(): void {
     this.stopsCache.clear();
     this.precomputeLineScrolls();
+    if (this.lastOppWordIdx >= 0) {
+      this.updateOpponent(this.lastOppWordIdx, this.lastOppCharIdx);
+    }
   }
 
   private precomputeLineScrolls(): void {
@@ -187,6 +204,43 @@ export class CaretTracker {
     }
   }
 
+  /**
+   * Repositions the rival/AI ghost caret at the opponent's live word and character index.
+   */
+  public updateOpponent(wordIdx: number, charIdx: number): void {
+    if (!this.oppCaretEl || this.wordMetas.length === 0) return;
+
+    if (this.lastOppWordIdx !== wordIdx) {
+      if (this.lastOppWordIdx >= 0 && this.lastOppWordIdx < this.wordMetas.length) {
+        this.wordMetas[this.lastOppWordIdx].container.classList.remove('opp-current-word');
+      }
+      this.lastOppWordIdx = wordIdx;
+      if (wordIdx >= 0 && wordIdx < this.wordMetas.length) {
+        this.wordMetas[wordIdx].container.classList.add('opp-current-word');
+      }
+    }
+    this.lastOppCharIdx = charIdx;
+
+    if (wordIdx < 0 || wordIdx >= this.wordMetas.length) {
+      this.oppCaretEl.style.opacity = '0';
+      return;
+    }
+
+    let stops = this.stopsCache.get(wordIdx);
+    if (!stops) {
+      stops = this.measureWordStops(wordIdx);
+    }
+
+    const charCount = this.wordMetas[wordIdx].charSpans.length;
+    const clampedChar = Math.max(0, Math.min(charIdx, charCount));
+    const stop = stops[clampedChar];
+    if (!stop) return;
+
+    this.oppCaretEl.style.transform = `translate3d(${stop.x}px, ${stop.y}px, 0)`;
+    this.oppCaretEl.style.height = `${stop.h}px`;
+    this.oppCaretEl.style.opacity = '0.88';
+  }
+
   public hide(): void {
     if (this.typingTimer !== null) {
       clearTimeout(this.typingTimer);
@@ -196,5 +250,9 @@ export class CaretTracker {
       this.caretEl.classList.remove('caret-typing');
       this.caretEl.style.opacity = '0';
     }
+    if (this.oppCaretEl) {
+      this.oppCaretEl.style.opacity = '0';
+    }
   }
 }
+

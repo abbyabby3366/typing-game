@@ -43,6 +43,60 @@ const CURATED_PASSAGES: Omit<Passage, 'words'>[] = [
     category: 'scifi',
     text: 'Man considered because, in a way, it was the end of all things. The stars and galaxies died and snuffed out, and space grew black in the wake of ten trillion years of running down. The consciousness of Man fused with the cosmic supercomputer, and all the questions of the universe converged into a single point of light.',
   },
+  {
+    id: 'cyberpunk_ghost_shell',
+    title: 'Ghost in the Shell: Net Dive',
+    category: 'cyberpunk',
+    text: 'The net is vast and infinite. When our consciousness merges with the global information sea, boundaries between silicon memory and human intuition dissolve into pure signal. Every keystroke transmits a pulse across fiber optic arteries, racing past ice firewalls toward the central nexus core.',
+  },
+  {
+    id: 'scifi_foundation',
+    title: 'Foundation: Psychohistory',
+    category: 'scifi',
+    text: 'The fall of Empire, gentlemen, is a massive thing, however, and not easily fought. It is dictated by a rising bureaucracy, a receding initiative, a freezing of caste, and a damming of curiosity. Only a disciplined synthesis of knowledge across the galaxy can shorten the dark age to a single millennium.',
+  },
+  {
+    id: 'philosophy_digital_war',
+    title: 'The Art of Digital Velocity',
+    category: 'philosophy',
+    text: 'Speed without precision is mere noise in the void, yet hesitation surrenders the high ground before the first packet arrives. True mastery emerges when thought and motion fuse into an effortless rhythm, where fingers strike each key before conscious deliberation even begins.',
+  },
+  {
+    id: 'coding_rust_memory',
+    title: 'Rust Ownership & Zero-Cost Abstractions',
+    category: 'coding',
+    text: 'Ownership rules guarantee memory safety without a garbage collector. Each value in Rust has a single owner, and when that owner goes out of scope the resource is deterministically dropped. Immutable references allow concurrent reads across threads, while mutable borrows enforce exclusive access at compile time.',
+  },
+  {
+    id: 'coding_distributed_consensus',
+    title: 'Distributed Consensus & Event Loops',
+    category: 'coding',
+    text: 'High-frequency state synchronization requires non-blocking sockets, deterministic state machines, and zero-allocation serialization paths. By disabling Nagle buffering and batching outbound frames on the reactor loop, sub-millisecond telemetry streams across the network without head-of-line blocking.',
+  },
+  {
+    id: 'coding_shader_pipeline',
+    title: 'WebGL Shader & Particle Pipeline',
+    category: 'coding',
+    text: 'Instanced buffer geometries upload vertex positions and velocity vectors directly to GPU memory. Fragment shaders evaluate additive neon bloom and exponential fog attenuation in parallel, sustaining locked frame pacing even during intense particle detonation bursts.',
+  },
+  {
+    id: 'sprint_orbital_burst',
+    title: 'Orbital Strike Burst',
+    category: 'sprints',
+    text: 'Capacitors charged to maximum threshold. Lock target coordinates, bypass thermal limiters, and fire every photon cannon in a single relentless volley.',
+  },
+  {
+    id: 'sprint_zero_day',
+    title: 'Zero-Day Kernel Breach',
+    category: 'sprints',
+    text: 'Inject the payload into ring zero before the watchdog timer resets. Every millisecond counts when racing an autonomous intrusion countermeasure.',
+  },
+  {
+    id: 'sprint_quantum_overclock',
+    title: 'Quantum Relay Overclock',
+    category: 'sprints',
+    text: 'Override neural governors and push clock frequencies past redline. Pure velocity decides who holds the nexus bridge tonight.',
+  },
 ];
 
 export function getPassageByCategory(

@@ -1,6 +1,8 @@
 import { ErrorMode } from '../game/typingEngine';
 import { soundEngine } from '../audio/soundEngine';
+import { musicPlayer } from '../audio/musicPlayer';
 import { SongTrack } from '../game/songCatalog';
+import { telemetryStore } from '../game/telemetryStore';
 import { escapeHtml } from './escapeHtml';
 import { LyricsSelectorView } from './lyricsSelectorView';
 import {
@@ -23,6 +25,7 @@ export class LobbyView {
   private container: HTMLElement;
   public onCreateRoom?: (config: LobbyConfig) => void;
   public onJoinRoom?: (roomCode: string, playerName: string) => void;
+  public onOpenTelemetry?: () => void;
   public onStartBot?: (
     playerName: string,
     difficulty: string,
@@ -69,6 +72,7 @@ export class LobbyView {
 
     const categoryLabel =
       CATEGORY_LABELS[this.selectedCategory] || 'Cyberpunk & Matrix';
+    const summary = telemetryStore.getSummary();
 
     this.container.innerHTML = `
       <div class="lobby-card">
@@ -77,9 +81,15 @@ export class LobbyView {
           <div class="lobby-title-group">
             <h2 class="brand-title" style="font-size: 1.8rem; margin: 0;">BATTLE <span class="text-cyan">LOBBY</span></h2>
           </div>
-          <div class="pilot-capsule" title="Click to edit name">
-            <span class="pilot-capsule-tag">NAME</span>
-            <input id="input-pilot-name" type="text" class="pilot-capsule-input" value="${escapeHtml(savedName)}" maxlength="16" placeholder="NAME" />
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <button id="btn-lobby-telemetry" type="button" class="btn-career-log" title="Open Career Telemetry & Match Log">
+              ${ICONS.chart(14)}
+              <span>CAREER: ${summary.bestWpm} PEAK WPM · ${summary.totalMatches} RUNS</span>
+            </button>
+            <div class="pilot-capsule" title="Click to edit name">
+              <span class="pilot-capsule-tag">NAME</span>
+              <input id="input-pilot-name" type="text" class="pilot-capsule-input" value="${escapeHtml(savedName)}" maxlength="16" placeholder="NAME" />
+            </div>
           </div>
         </div>
 
@@ -123,6 +133,11 @@ export class LobbyView {
 
   private setupListeners(): void {
     const nameInput = this.container.querySelector('#input-pilot-name') as HTMLInputElement;
+    const telemetryBtn = this.container.querySelector('#btn-lobby-telemetry');
+    telemetryBtn?.addEventListener('click', () => {
+      soundEngine.playUiClick();
+      this.onOpenTelemetry?.();
+    });
 
     // Segmented Mode Switching
     const tabSolo = this.container.querySelector('#tab-btn-solo');
@@ -133,7 +148,29 @@ export class LobbyView {
     const panelZen = this.container.querySelector('#panel-zen-mode');
     const panelMulti = this.container.querySelector('#panel-multiplayer-mode');
 
+    // Initialize Lyrics Selector Views
+    const soloLyricsWrap = this.container.querySelector('#solo-lyrics-selector-wrapper') as HTMLElement;
+    const zenLyricsWrap = this.container.querySelector('#zen-lyrics-selector-wrapper') as HTMLElement;
+
+    const soloLyricsSelector = new LyricsSelectorView(soloLyricsWrap);
+    const zenLyricsSelector = new LyricsSelectorView(zenLyricsWrap);
+
+    soloLyricsSelector.onSongSelected = (song) => {
+      zenLyricsSelector.syncSongByLyrics(song.lyrics);
+    };
+    zenLyricsSelector.onSongSelected = (song) => {
+      soloLyricsSelector.syncSongByLyrics(song.lyrics);
+    };
+
+    if (this.selectedCategory === 'lyrics') {
+      if (this.activeTab === 'solo') soloLyricsSelector.render();
+      else if (this.activeTab === 'zen') zenLyricsSelector.render();
+    }
+
     const switchTab = (tab: 'solo' | 'zen' | 'multiplayer') => {
+      if (this.activeTab !== tab) {
+        musicPlayer.stopPreview();
+      }
       this.activeTab = tab;
       soundEngine.playUiClick();
 
@@ -145,7 +182,6 @@ export class LobbyView {
       panelZen?.classList.toggle('hidden', tab !== 'zen');
       panelMulti?.classList.toggle('hidden', tab !== 'multiplayer');
 
-      // Re-render lyrics selector for newly active tab if lyrics selected
       if (this.selectedCategory === 'lyrics') {
         if (tab === 'solo') soloLyricsSelector.render();
         else if (tab === 'zen') zenLyricsSelector.render();
@@ -187,24 +223,21 @@ export class LobbyView {
       card.addEventListener('click', (e) => e.preventDefault());
     });
 
-    // Error mode toggle buttons
-    const setupErrorToggles = (selector: string) => {
-      const btns = this.container.querySelectorAll(selector);
-      btns.forEach((btn) => {
-        const selectMode = (e: Event) => {
-          e.preventDefault();
-          soundEngine.playUiClick();
-          btns.forEach((b) => b.classList.remove('active'));
-          btn.classList.add('active');
-          this.selectedErrorMode = (btn.getAttribute('data-mode') || 'allow_errors') as ErrorMode;
-        };
-        btn.addEventListener('pointerdown', selectMode);
-        btn.addEventListener('click', (e) => e.preventDefault());
-      });
-    };
-    setupErrorToggles('.solo-mode-btn');
-    setupErrorToggles('.zen-mode-btn');
-    setupErrorToggles('.multi-mode-btn');
+    // Error mode toggle buttons (synchronized across Solo & Zen tabs)
+    const allModeBtns = this.container.querySelectorAll('.solo-mode-btn, .zen-mode-btn');
+    allModeBtns.forEach((btn) => {
+      const selectMode = (e: Event) => {
+        e.preventDefault();
+        soundEngine.playUiClick();
+        const mode = (btn.getAttribute('data-mode') || 'allow_errors') as ErrorMode;
+        this.selectedErrorMode = mode;
+        allModeBtns.forEach((b) => {
+          b.classList.toggle('active', b.getAttribute('data-mode') === mode);
+        });
+      };
+      btn.addEventListener('pointerdown', selectMode);
+      btn.addEventListener('click', (e) => e.preventDefault());
+    });
 
     // Custom Bot Speed Slider & Input sync
     const botWpmInput = this.container.querySelector('#input-custom-bot-wpm') as HTMLInputElement;
@@ -230,35 +263,36 @@ export class LobbyView {
       if (!isNaN(parsed)) updateBotWpm(parsed);
     });
 
-    // Initialize Lyrics Selector Views
-    const soloLyricsWrap = this.container.querySelector('#solo-lyrics-selector-wrapper') as HTMLElement;
-    const zenLyricsWrap = this.container.querySelector('#zen-lyrics-selector-wrapper') as HTMLElement;
-    const multiLyricsWrap = this.container.querySelector('#multi-lyrics-selector-wrapper') as HTMLElement;
+    const syncAllCategoryDropdowns = (val: string) => {
+      const labelText = CATEGORY_LABELS[val] || val;
+      const soloSelectedLabel = this.container.querySelector('#dropdown-selected-solo');
+      const zenSelectedLabel = this.container.querySelector('#dropdown-selected-zen');
+      if (soloSelectedLabel) soloSelectedLabel.textContent = labelText;
+      if (zenSelectedLabel) zenSelectedLabel.textContent = labelText;
 
-    const soloLyricsSelector = new LyricsSelectorView(soloLyricsWrap);
-    const zenLyricsSelector = new LyricsSelectorView(zenLyricsWrap);
-    const multiLyricsSelector = new LyricsSelectorView(multiLyricsWrap);
+      this.container
+        .querySelectorAll('#dropdown-menu-solo .cyber-dropdown-item, #dropdown-menu-zen .cyber-dropdown-item')
+        .forEach((item) => {
+          item.classList.toggle('active', item.getAttribute('data-val') === val);
+        });
 
-    if (this.selectedCategory === 'lyrics') {
-      if (this.activeTab === 'solo') soloLyricsSelector.render();
-      else if (this.activeTab === 'zen') zenLyricsSelector.render();
-      else multiLyricsSelector.render();
-    }
+      const soloCustomWrap = this.container.querySelector('#solo-custom-text-wrapper');
+      const zenCustomWrap = this.container.querySelector('#zen-custom-text-wrapper');
+      soloCustomWrap?.classList.toggle('hidden', val !== 'custom');
+      zenCustomWrap?.classList.toggle('hidden', val !== 'custom');
+      soloLyricsWrap?.classList.toggle('hidden', val !== 'lyrics');
+      zenLyricsWrap?.classList.toggle('hidden', val !== 'lyrics');
+
+      if (val === 'lyrics') {
+        if (this.activeTab === 'solo') soloLyricsSelector.render();
+        else if (this.activeTab === 'zen') zenLyricsSelector.render();
+      }
+    };
 
     // Custom Cyber Dropdown helper
-    const setupCustomDropdown = (
-      triggerId: string,
-      menuId: string,
-      selectedLabelId: string,
-      customWrapId: string,
-      lyricsWrapId: string,
-      lyricsSelector: LyricsSelectorView
-    ) => {
+    const setupCustomDropdown = (triggerId: string, menuId: string) => {
       const trigger = this.container.querySelector(triggerId) as HTMLButtonElement;
       const menu = this.container.querySelector(menuId) as HTMLElement;
-      const selectedLabel = this.container.querySelector(selectedLabelId) as HTMLElement;
-      const customWrap = this.container.querySelector(customWrapId) as HTMLElement;
-      const lyricsWrap = this.container.querySelector(lyricsWrapId) as HTMLElement;
 
       if (!trigger || !menu) return;
 
@@ -287,26 +321,11 @@ export class LobbyView {
           e.stopPropagation();
           soundEngine.playUiClick();
           const val = item.getAttribute('data-val') || 'cyberpunk';
+          if (this.selectedCategory === 'lyrics' && val !== 'lyrics') {
+            musicPlayer.stopPreview();
+          }
           this.selectedCategory = val;
-
-          menu.querySelectorAll('.cyber-dropdown-item').forEach((i) => i.classList.remove('active'));
-          item.classList.add('active');
-
-          if (selectedLabel) {
-            selectedLabel.textContent = CATEGORY_LABELS[val] || val;
-          }
-
-          if (val === 'custom') {
-            customWrap.classList.remove('hidden');
-            lyricsWrap.classList.add('hidden');
-          } else if (val === 'lyrics') {
-            customWrap.classList.add('hidden');
-            lyricsWrap.classList.remove('hidden');
-            lyricsSelector.render();
-          } else {
-            customWrap.classList.add('hidden');
-            lyricsWrap.classList.add('hidden');
-          }
+          syncAllCategoryDropdowns(val);
 
           menu.classList.add('hidden');
           trigger.classList.remove('open');
@@ -317,30 +336,8 @@ export class LobbyView {
       });
     };
 
-    setupCustomDropdown(
-      '#dropdown-trigger-solo',
-      '#dropdown-menu-solo',
-      '#dropdown-selected-solo',
-      '#solo-custom-text-wrapper',
-      '#solo-lyrics-selector-wrapper',
-      soloLyricsSelector
-    );
-    setupCustomDropdown(
-      '#dropdown-trigger-zen',
-      '#dropdown-menu-zen',
-      '#dropdown-selected-zen',
-      '#zen-custom-text-wrapper',
-      '#zen-lyrics-selector-wrapper',
-      zenLyricsSelector
-    );
-    setupCustomDropdown(
-      '#dropdown-trigger-multi',
-      '#dropdown-menu-multi',
-      '#dropdown-selected-multi',
-      '#multi-custom-text-wrapper',
-      '#multi-lyrics-selector-wrapper',
-      multiLyricsSelector
-    );
+    setupCustomDropdown('#dropdown-trigger-solo', '#dropdown-menu-solo');
+    setupCustomDropdown('#dropdown-trigger-zen', '#dropdown-menu-zen');
 
     // Global listener to close dropdowns when clicking outside
     if (!this.docListenerBound) {
@@ -358,6 +355,7 @@ export class LobbyView {
     const soloBtn = this.container.querySelector('#btn-start-solo-match');
     const soloCustomText = this.container.querySelector('#input-solo-custom-text') as HTMLTextAreaElement;
     soloBtn?.addEventListener('click', () => {
+      musicPlayer.stopPreview();
       const pilotName = nameInput.value.trim() || 'ANONYMOUS';
       localStorage.setItem('cyber_pilot_name', pilotName);
       let custom = this.selectedCategory === 'custom' ? soloCustomText.value.trim() || null : null;
@@ -381,6 +379,7 @@ export class LobbyView {
     const zenBtn = this.container.querySelector('#btn-start-zen-match');
     const zenCustomText = this.container.querySelector('#input-zen-custom-text') as HTMLTextAreaElement;
     zenBtn?.addEventListener('click', () => {
+      musicPlayer.stopPreview();
       const pilotName = nameInput.value.trim() || 'ANONYMOUS';
       localStorage.setItem('cyber_pilot_name', pilotName);
       let custom = this.selectedCategory === 'custom' ? zenCustomText?.value.trim() || null : null;
@@ -394,16 +393,18 @@ export class LobbyView {
 
     // Create Multiplayer room
     const createBtn = this.container.querySelector('#btn-create-room');
-    const multiCustomText = this.container.querySelector('#input-multi-custom-text') as HTMLTextAreaElement;
     createBtn?.addEventListener('click', () => {
+      musicPlayer.stopPreview();
       const pilotName = nameInput.value.trim() || 'ANONYMOUS';
       localStorage.setItem('cyber_pilot_name', pilotName);
       soundEngine.playUiClick();
-      let custom = this.selectedCategory === 'custom' ? multiCustomText?.value.trim() || null : null;
+      let custom: string | null = null;
       let activeSong: SongTrack | null = null;
       if (this.selectedCategory === 'lyrics') {
-        activeSong = multiLyricsSelector.getSelectedSong();
+        activeSong = soloLyricsSelector.getSelectedSong();
         custom = activeSong ? activeSong.lyrics : null;
+      } else if (this.selectedCategory === 'custom') {
+        custom = soloCustomText?.value.trim() || zenCustomText?.value.trim() || null;
       }
       this.onCreateRoom?.({
         playerName: pilotName,
@@ -417,7 +418,8 @@ export class LobbyView {
     // Join Multiplayer room
     const joinBtn = this.container.querySelector('#btn-join-room');
     const joinInput = this.container.querySelector('#input-join-room-code') as HTMLInputElement;
-    joinBtn?.addEventListener('click', () => {
+    const submitJoin = () => {
+      musicPlayer.stopPreview();
       const pilotName = nameInput.value.trim() || 'ANONYMOUS';
       const code = joinInput?.value.trim().toUpperCase();
       if (!code) {
@@ -426,6 +428,13 @@ export class LobbyView {
       }
       localStorage.setItem('cyber_pilot_name', pilotName);
       this.onJoinRoom?.(code, pilotName);
+    };
+    joinBtn?.addEventListener('click', submitJoin);
+    joinInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submitJoin();
+      }
     });
   }
 }

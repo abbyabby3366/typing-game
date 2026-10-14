@@ -1,4 +1,3 @@
-import * as THREE from 'three';
 import { SceneManager } from './graphics/sceneManager';
 import { BeamEffect } from './graphics/beamEffect';
 import { ProjectileManager } from './graphics/projectileManager';
@@ -9,6 +8,7 @@ import { NetworkClient, ServerMsg } from './game/networkClient';
 import { SongTrack, SONG_CATALOG } from './game/songCatalog';
 import { musicPlayer } from './audio/musicPlayer';
 import { buildZenPassage } from './game/zenHelper';
+import { telemetryStore } from './game/telemetryStore';
 import { LobbyView } from './ui/lobbyView';
 import { WaitingRoomView } from './ui/waitingRoomView';
 import { HudView } from './ui/hudView';
@@ -35,6 +35,8 @@ class App {
   private statusPillEl: HTMLElement;
   private statusTextEl: HTMLElement;
   private audioBtn: HTMLElement;
+  private keyClickBtn: HTMLElement | null;
+  private telemetryBtn: HTMLElement | null;
   private toastContainer: HTMLElement;
 
   private myRole: 'player1' | 'player2' = 'player1';
@@ -43,12 +45,14 @@ class App {
   private currentRoomCode: string = '';
   private currentRoomSettings: any = null;
   private currentErrorMode: ErrorMode = 'allow_errors';
+  private currentCategory: string = 'cyberpunk';
   private passageTitle: string = 'CYBER CLASH PROTOCOL';
   private isMatchActive: boolean = false;
   private lastTugPosition: number = 0;
   private activeSong: SongTrack | null = null;
   private isBotMatch: boolean = false;
   private isZenMode: boolean = false;
+  private matchStartTime: number = 0;
   private zenStartTime: number = 0;
   private lastZenConfig: {
     errorMode: ErrorMode;
@@ -64,6 +68,8 @@ class App {
     this.statusPillEl = document.getElementById('connection-status')!;
     this.statusTextEl = this.statusPillEl.querySelector('.status-text')!;
     this.audioBtn = document.getElementById('audio-toggle-btn')!;
+    this.keyClickBtn = document.getElementById('keyclick-toggle-btn');
+    this.telemetryBtn = document.getElementById('telemetry-open-btn');
     this.toastContainer = document.getElementById('toast-container')!;
     const modalContainer = document.getElementById('modal-container')!;
 
@@ -117,6 +123,39 @@ class App {
       this.showToast(isMuted ? 'Audio Synthesizer Muted' : 'Audio Synthesizer Online');
     });
 
+    const syncKeyClickVisual = () => {
+      if (!this.keyClickBtn) return;
+      const enabled = soundEngine.getKeyClicksEnabled();
+      this.keyClickBtn.style.opacity = enabled ? '1' : '0.45';
+    };
+    syncKeyClickVisual();
+
+    this.keyClickBtn?.addEventListener('click', () => {
+      soundEngine.init();
+      const enabled = soundEngine.toggleKeyClicks();
+      syncKeyClickVisual();
+      if (enabled) soundEngine.playKeystroke(false);
+      this.showToast(
+        enabled ? 'Mechanical Key Switch Clicks Enabled' : 'Mechanical Key Switch Clicks Muted'
+      );
+    });
+
+    const openTelemetry = () => {
+      if (this.isMatchActive || this.countdownTimer !== null) {
+        this.showToast('Telemetry archive locked during active combat', true);
+        return;
+      }
+      soundEngine.playUiClick();
+      this.modalView.showTelemetryModal(() => {
+        if (!this.isMatchActive && !this.currentRoomCode) {
+          this.lobbyView.render('');
+        }
+      });
+    };
+
+    this.telemetryBtn?.addEventListener('click', openTelemetry);
+    this.lobbyView.onOpenTelemetry = openTelemetry;
+
     this.network.onStatusChange = (status) => {
       this.statusPillEl.className = `status-pill status-${status}`;
       this.statusTextEl.textContent = status.toUpperCase();
@@ -126,7 +165,30 @@ class App {
       this.showToast(err, true);
     };
 
+    musicPlayer.onError = (err) => {
+      this.showToast(err, true);
+    };
+
     this.network.connect();
+  }
+
+  private syncSongFromSettings(settings: any): void {
+    if (!settings) return;
+    if (settings.category === 'lyrics') {
+      if (settings.custom_text) {
+        const trimmed = String(settings.custom_text).trim();
+        const matched = SONG_CATALOG.find((s) => s.lyrics.trim() === trimmed);
+        if (matched) {
+          this.activeSong = matched;
+          return;
+        }
+      }
+      if (!this.activeSong) {
+        this.activeSong = SONG_CATALOG[0] || null;
+      }
+    } else {
+      this.activeSong = null;
+    }
   }
 
   private initNetworkHandlers(): void {
@@ -137,6 +199,8 @@ class App {
           this.myRole = msg.payload.role;
           this.currentRoomSettings = msg.payload.settings;
           this.currentErrorMode = msg.payload.settings.error_mode as ErrorMode;
+          this.currentCategory = msg.payload.settings.category || 'cyberpunk';
+          this.syncSongFromSettings(msg.payload.settings);
           if (!this.isBotMatch) {
             this.updateUrlRoomCode(this.currentRoomCode);
             this.waitingRoomView.render(this.currentRoomCode, true, msg.payload.settings);
@@ -146,6 +210,11 @@ class App {
         case 'RoomSettingsUpdated':
           this.currentRoomSettings = msg.payload.settings;
           this.currentErrorMode = msg.payload.settings.error_mode as ErrorMode;
+          this.currentCategory = msg.payload.settings.category || 'cyberpunk';
+          this.syncSongFromSettings(msg.payload.settings);
+          if (!this.isMatchActive && !this.isBotMatch) {
+            this.waitingRoomView.applyExternalSettings(msg.payload.settings);
+          }
           break;
 
         case 'RoomJoined':
@@ -154,6 +223,8 @@ class App {
           this.opponentName = msg.payload.opponent_name;
           this.currentRoomSettings = msg.payload.settings;
           this.currentErrorMode = msg.payload.settings.error_mode as ErrorMode;
+          this.currentCategory = msg.payload.settings.category || 'cyberpunk';
+          this.syncSongFromSettings(msg.payload.settings);
           this.updateUrlRoomCode(this.currentRoomCode);
           this.waitingRoomView.render(this.currentRoomCode, false, msg.payload.settings, this.opponentName);
           this.showToast(`Locked into Arena with ${this.opponentName}`);
@@ -173,6 +244,12 @@ class App {
           this.handleWordFired(msg.payload);
           break;
 
+        case 'TugSync':
+          this.lastTugPosition = msg.payload.tug_position;
+          this.beamEffect.setTugPosition(msg.payload.tug_position);
+          this.hudView.updateTugMeter(msg.payload.tug_position);
+          break;
+
         case 'OpponentProgressUpdate':
           if (msg.payload.player_role !== this.myRole) {
             this.hudView.updateStats(this.typingEngine.getStats(), {
@@ -180,6 +257,7 @@ class App {
               wpm: msg.payload.wpm,
               accuracy: msg.payload.accuracy,
               wordsCompleted: msg.payload.word_index,
+              charIndex: msg.payload.char_index,
               totalWords: this.typingEngine.words.length,
               combo: msg.payload.combo,
             });
@@ -190,12 +268,30 @@ class App {
           this.handleGameOver(msg.payload);
           break;
 
+        case 'OpponentRequestedRematch':
+          if (msg.payload.player_role !== this.myRole) {
+            soundEngine.playRematchChime();
+            this.modalView.notifyOpponentRematch();
+            this.showToast(`${this.opponentName} requested a rematch!`);
+          }
+          break;
+
         case 'RematchAgreed':
           this.modalView.hide();
           this.handleGameStarting(msg.payload.countdown_seconds, msg.payload.passage_title, msg.payload.passage_text, msg.payload.words);
           break;
 
         case 'OpponentLeft':
+          if (this.modalView.isGameOverOpen()) {
+            this.modalView.notifyOpponentLeft();
+            this.showToast(
+              this.myRole === 'player1'
+                ? 'Challenger left the arena conduit.'
+                : 'Host left the arena.',
+              true
+            );
+            break;
+          }
           if (this.myRole === 'player1') {
             if (this.countdownTimer !== null) {
               clearInterval(this.countdownTimer);
@@ -214,6 +310,11 @@ class App {
             this.waitingRoomView.setOpponentLeft();
             this.showToast('Challenger left the arena conduit.', true);
           } else {
+            if (this.countdownTimer !== null) {
+              clearInterval(this.countdownTimer);
+              this.countdownTimer = null;
+              document.querySelector('.countdown-overlay')?.remove();
+            }
             this.isMatchActive = false;
             this.typingEngine.stop();
             soundEngine.stopBeamHum();
@@ -236,6 +337,7 @@ class App {
     this.lobbyView.onCreateRoom = (cfg) => {
       this.myName = cfg.playerName;
       this.currentErrorMode = cfg.errorMode;
+      this.currentCategory = cfg.category;
       this.activeSong = cfg.selectedSong || null;
       this.isBotMatch = false;
       this.isZenMode = false;
@@ -247,6 +349,7 @@ class App {
 
     this.waitingRoomView.onUpdateSettings = (cfg) => {
       this.currentErrorMode = cfg.errorMode;
+      this.currentCategory = cfg.category;
       this.activeSong = cfg.selectedSong || null;
       this.network.send({
         type: 'UpdateRoomSettings',
@@ -269,6 +372,7 @@ class App {
 
     this.lobbyView.onJoinRoom = (code, playerName) => {
       this.myName = playerName;
+      this.activeSong = null;
       this.isBotMatch = false;
       this.isZenMode = false;
       this.network.send({ type: 'JoinRoom', payload: { room_code: code, player_name: playerName } });
@@ -276,10 +380,22 @@ class App {
 
     this.lobbyView.onStartBot = (playerName, difficulty, customWpm, errorMode, category, customText, selectedSong) => {
       this.myName = playerName;
+      this.myRole = 'player1';
       this.currentErrorMode = errorMode;
+      this.currentCategory = category;
       this.activeSong = selectedSong || null;
       this.isBotMatch = true;
       this.isZenMode = false;
+      this.opponentName =
+        difficulty === 'easy'
+          ? 'DRONE-ALPHA (40 WPM)'
+          : difficulty === 'medium'
+          ? 'NEXUS-V2 (70 WPM)'
+          : difficulty === 'hard'
+          ? 'CYBER-VIPER (100 WPM)'
+          : difficulty === 'cyber_god'
+          ? 'QUANTUM-GOD (135 WPM)'
+          : `CUSTOM-AI (${customWpm} WPM)`;
       this.network.send({
         type: 'StartBotMatch',
         payload: { player_name: playerName, bot_difficulty: difficulty, custom_bot_wpm: difficulty === 'custom' ? customWpm : undefined, error_mode: errorMode, category, custom_text: customText },
@@ -288,7 +404,9 @@ class App {
 
     this.lobbyView.onStartZen = (playerName, errorMode, category, customText, selectedSong) => {
       this.myName = playerName;
+      this.myRole = 'player1';
       this.currentErrorMode = errorMode;
+      this.currentCategory = category;
       this.activeSong = selectedSong || null;
       this.isBotMatch = false;
       this.isZenMode = true;
@@ -299,7 +417,11 @@ class App {
 
     this.hudView.onExitMatch = () => {
       if (this.isZenMode) {
-        this.exitOrForfeitMatch();
+        this.modalView.showConfirm(
+          'EXIT ZEN FLOW',
+          'Are you sure you want to leave this Zen Practice session and return to the battle lobby?',
+          () => this.exitOrForfeitMatch()
+        );
         return;
       }
       const title = this.isBotMatch ? 'SURRENDER BATTLE' : 'SURRENDER DUEL';
@@ -311,6 +433,7 @@ class App {
   }
 
   private exitOrForfeitMatch(): void {
+    const wasActiveOrCountdown = this.isMatchActive || this.countdownTimer !== null;
     if (this.countdownTimer !== null) {
       clearInterval(this.countdownTimer);
       this.countdownTimer = null;
@@ -328,6 +451,21 @@ class App {
     if (this.isZenMode) {
       this.showToast('Exited Zen Flow session');
     } else {
+      if (wasActiveOrCountdown) {
+        const localStats = this.typingEngine.getStats();
+        telemetryStore.recordMatch({
+          mode: this.isBotMatch ? 'solo' : 'duel',
+          outcome: 'defeat',
+          opponentName: this.opponentName,
+          passageTitle: this.passageTitle,
+          errorMode: this.currentErrorMode,
+          wpm: localStats.wpm,
+          rawWpm: localStats.rawWpm,
+          accuracy: localStats.accuracy,
+          maxCombo: localStats.maxCombo,
+          wordsCompleted: localStats.wordsCompleted,
+        });
+      }
       soundEngine.playDefeatSound();
       this.network.send({ type: 'LeaveRoom' });
       this.showToast('Match forfeited', true);
@@ -379,10 +517,12 @@ class App {
 
     this.typingEngine.onWordCompleted = (word, index, combo, wpm, accuracy, isCorrect = true) => {
       if (!isCorrect) {
-        this.network.send({
-          type: 'WordCompleted',
-          payload: { word_index: index, word, wpm, accuracy, combo: 0, push_power: 0, is_correct: false },
-        });
+        if (!this.isZenMode) {
+          this.network.send({
+            type: 'WordCompleted',
+            payload: { word_index: index, word, wpm, accuracy, combo: 0, push_power: 0, is_correct: false },
+          });
+        }
         if (this.isZenMode && index + 1 >= this.typingEngine.words.length) this.handleZenComplete();
         return;
       }
@@ -420,7 +560,9 @@ class App {
     words: string[],
     isZen: boolean = false
   ): void {
-    if (!this.activeSong && !isZen) {
+    if (this.currentCategory !== 'lyrics') {
+      this.activeSong = null;
+    } else if (!this.activeSong && !isZen) {
       const trimmed = text.trim();
       const matched = SONG_CATALOG.find(
         (s) => s.lyrics.trim() === trimmed || s.title.toLowerCase() === title.toLowerCase()
@@ -431,7 +573,7 @@ class App {
     this.passageTitle = this.activeSong
       ? `${this.activeSong.title} - ${this.activeSong.artist} (${this.activeSong.avgWpm} WPM)`
       : title;
-    this.typingEngine.setWords(words, this.currentErrorMode);
+    this.typingEngine.setWords(words, this.currentErrorMode, !isZen);
     this.hudView.renderBattleHud(
       this.myName,
       isZen ? 'ZEN FLOW' : this.opponentName,
@@ -439,7 +581,8 @@ class App {
       this.currentErrorMode,
       words,
       this.activeSong,
-      isZen
+      isZen,
+      this.myRole
     );
     this.hudView.updateTypingDisplay(this.typingEngine);
 
@@ -470,6 +613,7 @@ class App {
           this.countdownTimer = null;
         }
         this.isMatchActive = true;
+        this.matchStartTime = performance.now();
         this.zenStartTime = performance.now();
         this.typingEngine.start();
         if (!isZen) {
@@ -499,6 +643,11 @@ class App {
   }
 
   private handleGameOver(payload: any): void {
+    if (this.countdownTimer !== null) {
+      clearInterval(this.countdownTimer);
+      this.countdownTimer = null;
+      document.querySelector('.countdown-overlay')?.remove();
+    }
     this.escapeManager.reset();
     this.isMatchActive = false;
     this.typingEngine.stop();
@@ -510,9 +659,40 @@ class App {
     else if (isDraw) soundEngine.stopBeamHum();
     else soundEngine.playDefeatSound();
 
+    const localStats = this.typingEngine.getStats();
+    const myServerStats = this.myRole === 'player1' ? payload.p1_stats : payload.p2_stats;
+    const oppServerStats = this.myRole === 'player1' ? payload.p2_stats : payload.p1_stats;
+
+    const { record, isNewPersonalBest } = telemetryStore.recordMatch({
+      mode: this.isBotMatch ? 'solo' : 'duel',
+      outcome: isDraw ? 'draw' : isWinner ? 'victory' : 'defeat',
+      opponentName: oppServerStats?.name || this.opponentName,
+      passageTitle: this.passageTitle,
+      errorMode: this.currentErrorMode,
+      wpm: Math.round(myServerStats?.wpm ?? localStats.wpm),
+      rawWpm: localStats.rawWpm,
+      accuracy: Math.round(myServerStats?.accuracy ?? localStats.accuracy),
+      maxCombo: myServerStats?.max_combo ?? localStats.maxCombo,
+      wordsCompleted: myServerStats?.words_completed ?? localStats.wordsCompleted,
+    });
+
     this.modalView.showGameOver(
-      { isWinner, isDraw, reason: payload.reason, p1Stats: payload.p1_stats, p2Stats: payload.p2_stats },
-      () => { musicPlayer.stop(); this.network.send({ type: 'RequestRematch' }); },
+      {
+        isWinner,
+        isDraw,
+        reason: payload.reason,
+        myRole: this.myRole,
+        isNewPersonalBest,
+        rawWpm: localStats.rawWpm,
+        typoCount: localStats.typoCount,
+        timestampIso: record.timestampIso,
+        p1Stats: payload.p1_stats,
+        p2Stats: payload.p2_stats,
+      },
+      () => {
+        musicPlayer.stop();
+        this.network.send({ type: 'RequestRematch' });
+      },
       () => {
         musicPlayer.stop();
         const exitedCode = this.currentRoomCode;
@@ -530,15 +710,45 @@ class App {
     musicPlayer.stop();
 
     const stats = this.typingEngine.getStats();
-    const elapsedSec = (performance.now() - this.zenStartTime) / 1000;
+    const elapsedSec = Math.max(1, (performance.now() - this.zenStartTime) / 1000);
     soundEngine.playVictoryExplosion();
 
+    const { record, isNewPersonalBest } = telemetryStore.recordMatch({
+      mode: 'zen',
+      outcome: 'completed',
+      opponentName: 'ZEN FLOW',
+      passageTitle: this.passageTitle,
+      errorMode: this.currentErrorMode,
+      wpm: stats.wpm,
+      rawWpm: stats.rawWpm,
+      accuracy: stats.accuracy,
+      maxCombo: stats.maxCombo,
+      wordsCompleted: stats.wordsCompleted,
+    });
+
     this.modalView.showZenComplete(
-      { wpm: stats.wpm, accuracy: stats.accuracy, maxCombo: stats.maxCombo, wordsCompleted: stats.wordsCompleted + 1, charsTyped: stats.charsTyped, elapsedSec: Math.max(1, elapsedSec) },
+      {
+        wpm: stats.wpm,
+        rawWpm: stats.rawWpm,
+        accuracy: stats.accuracy,
+        maxCombo: stats.maxCombo,
+        wordsCompleted: stats.wordsCompleted,
+        charsTyped: stats.charsTyped,
+        typoCount: stats.typoCount,
+        elapsedSec,
+        isNewPersonalBest,
+        timestampIso: record.timestampIso,
+      },
       this.passageTitle,
       () => {
         if (this.lastZenConfig) {
-          this.lobbyView.onStartZen?.(this.myName, this.lastZenConfig.errorMode, this.lastZenConfig.category, this.lastZenConfig.customText, this.lastZenConfig.selectedSong);
+          this.lobbyView.onStartZen?.(
+            this.myName,
+            this.lastZenConfig.errorMode,
+            this.lastZenConfig.category,
+            this.lastZenConfig.customText,
+            this.lastZenConfig.selectedSong
+          );
         }
       },
       () => {
@@ -550,6 +760,7 @@ class App {
 
   private returnToLobby(keepCode: string = ''): void {
     this.currentRoomCode = '';
+    this.activeSong = null;
     this.isBotMatch = false;
     this.isZenMode = false;
     this.updateUrlRoomCode(keepCode);
@@ -559,7 +770,6 @@ class App {
   private checkUrlParams(): void {
     const roomParam = new URLSearchParams(window.location.search).get('room');
     if (roomParam && roomParam.trim()) {
-      // Room codes are short alphanumerics; drop anything else a crafted link might carry
       const code = roomParam.trim().toUpperCase().replace(/^BOT-/, '').replace(/[^A-Z0-9]/g, '').slice(0, 10);
       if (code !== roomParam) this.updateUrlRoomCode(code);
       this.lobbyView.render(code);

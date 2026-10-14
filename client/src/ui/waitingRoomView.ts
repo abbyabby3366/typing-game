@@ -47,7 +47,7 @@ export class WaitingRoomView {
       if (initialSettings.category) {
         this.selectedCategory = initialSettings.category;
       }
-      if (initialSettings.custom_text) {
+      if (initialSettings.custom_text !== undefined) {
         this.customText = initialSettings.custom_text;
       }
     }
@@ -151,6 +151,12 @@ export class WaitingRoomView {
                   <button type="button" class="cyber-dropdown-item ${this.selectedCategory === 'philosophy' ? 'active' : ''}" data-val="philosophy">
                     AI & Philosophy (Turing)
                   </button>
+                  <button type="button" class="cyber-dropdown-item ${this.selectedCategory === 'coding' ? 'active' : ''}" data-val="coding">
+                    Code & Systems (Rust/GPU)
+                  </button>
+                  <button type="button" class="cyber-dropdown-item ${this.selectedCategory === 'sprints' ? 'active' : ''}" data-val="sprints">
+                    Tactical Sprints (Fast Burst)
+                  </button>
                   <button type="button" class="cyber-dropdown-item ${this.selectedCategory === 'lyrics' ? 'active' : ''}" data-val="lyrics">
                     Lyrics Mode (24 Songs)
                   </button>
@@ -168,7 +174,7 @@ export class WaitingRoomView {
           <!-- Custom Passage Textarea -->
           <div id="room-custom-text-wrapper" class="setting-row ${this.selectedCategory === 'custom' ? '' : 'hidden'}" style="margin-top: 4px;">
             <label class="setting-label">CUSTOM DUEL PASSAGE</label>
-            <textarea id="input-room-custom-text" class="input-cyber" rows="2" placeholder="Type or paste custom duel passage...">${this.customText || ''}</textarea>
+            <textarea id="input-room-custom-text" class="input-cyber" rows="2" placeholder="Type or paste custom duel passage...">${escapeHtml(this.customText || '')}</textarea>
           </div>
 
           <!-- Lyrics Selector Container -->
@@ -245,22 +251,82 @@ export class WaitingRoomView {
     }
   }
 
+  public applyExternalSettings(settings: {
+    error_mode?: ErrorMode;
+    category?: string;
+    custom_text?: string | null;
+  }): void {
+    if (settings.error_mode) {
+      this.selectedErrorMode = settings.error_mode;
+      this.container.querySelectorAll('.room-mode-btn').forEach((btn) => {
+        btn.classList.toggle('active', btn.getAttribute('data-mode') === this.selectedErrorMode);
+      });
+    }
+    if (settings.custom_text !== undefined) {
+      this.customText = settings.custom_text;
+      const customTextarea = this.container.querySelector('#input-room-custom-text') as HTMLTextAreaElement | null;
+      if (customTextarea && !this.isHost) {
+        customTextarea.value = settings.custom_text || '';
+      }
+    }
+    if (settings.category) {
+      if (this.selectedCategory === 'lyrics' && settings.category !== 'lyrics') {
+        musicPlayer.stopPreview();
+      }
+      this.selectedCategory = settings.category;
+      const selectedLabel = this.container.querySelector('#dropdown-selected-room');
+      if (selectedLabel) {
+        selectedLabel.textContent = CATEGORY_LABELS[this.selectedCategory] || this.selectedCategory;
+      }
+      this.container.querySelectorAll('#dropdown-menu-room .cyber-dropdown-item').forEach((item) => {
+        item.classList.toggle('active', item.getAttribute('data-val') === this.selectedCategory);
+      });
+      const customWrap = this.container.querySelector('#room-custom-text-wrapper');
+      const lyricsWrap = this.container.querySelector('#room-lyrics-selector-wrapper');
+      customWrap?.classList.toggle('hidden', this.selectedCategory !== 'custom');
+      lyricsWrap?.classList.toggle('hidden', this.selectedCategory !== 'lyrics');
+    }
+    if (this.selectedCategory === 'lyrics' && this.lyricsSelector) {
+      this.lyricsSelector.syncSongByLyrics(this.customText);
+      const lyricsWrap = this.container.querySelector('#room-lyrics-selector-wrapper');
+      if (lyricsWrap && lyricsWrap.children.length === 0) {
+        this.lyricsSelector.render();
+      }
+      this.selectedSong = this.lyricsSelector.getSelectedSong();
+    }
+    this.flashSyncBadge();
+  }
+
   private setupListeners(fullUrl: string): void {
     // Copy invite link
     const copyBtn = this.container.querySelector('#btn-copy-link');
     copyBtn?.addEventListener('click', () => {
       soundEngine.playUiClick();
-      navigator.clipboard.writeText(fullUrl);
-      if (copyBtn) copyBtn.innerHTML = `${ICONS.check(15)} LINK COPIED!`;
-      setTimeout(() => {
-        if (copyBtn) copyBtn.innerHTML = `${ICONS.copy(15)} COPY INVITE LINK`;
-      }, 2000);
+      if (!navigator.clipboard?.writeText) {
+        if (copyBtn) copyBtn.innerHTML = `${ICONS.copy(15)} ${escapeHtml(fullUrl)}`;
+        return;
+      }
+      navigator.clipboard
+        .writeText(fullUrl)
+        .then(() => {
+          if (copyBtn) copyBtn.innerHTML = `${ICONS.check(15)} LINK COPIED!`;
+          setTimeout(() => {
+            if (copyBtn) copyBtn.innerHTML = `${ICONS.copy(15)} COPY INVITE LINK`;
+          }, 2000);
+        })
+        .catch(() => {
+          if (copyBtn) copyBtn.innerHTML = `COPY FAILED — USE ROOM CODE`;
+          setTimeout(() => {
+            if (copyBtn) copyBtn.innerHTML = `${ICONS.copy(15)} COPY INVITE LINK`;
+          }, 2500);
+        });
     });
 
     // Start duel button (Host only)
     const startBtn = this.container.querySelector('#btn-start-duel') as HTMLButtonElement | null;
     startBtn?.addEventListener('click', () => {
       soundEngine.playUiClick();
+      musicPlayer.stopPreview();
       if (startBtn) {
         startBtn.disabled = true;
         startBtn.innerHTML = `${ICONS.zap(16)} LAUNCHING...`;
@@ -275,6 +341,11 @@ export class WaitingRoomView {
       if (dropdownTrigger) dropdownTrigger.style.pointerEvents = 'none';
       const customTextarea = this.container.querySelector('#input-room-custom-text') as HTMLTextAreaElement;
       if (customTextarea) customTextarea.readOnly = true;
+      const lyricsWrapEl = this.container.querySelector('#room-lyrics-selector-wrapper') as HTMLElement;
+      if (lyricsWrapEl) {
+        lyricsWrapEl.style.pointerEvents = 'none';
+        lyricsWrapEl.style.opacity = '0.85';
+      }
     }
 
     // Cancel / Leave room
@@ -309,6 +380,7 @@ export class WaitingRoomView {
     };
 
     if (this.selectedCategory === 'lyrics') {
+      this.lyricsSelector.syncSongByLyrics(this.customText);
       this.lyricsSelector.render();
       this.selectedSong = this.lyricsSelector.getSelectedSong();
     }
@@ -336,6 +408,9 @@ export class WaitingRoomView {
           e.stopPropagation();
           soundEngine.playUiClick();
           const val = item.getAttribute('data-val') || 'cyberpunk';
+          if (this.selectedCategory === 'lyrics' && val !== 'lyrics') {
+            musicPlayer.stopPreview();
+          }
           this.selectedCategory = val;
 
           menu.querySelectorAll('.cyber-dropdown-item').forEach((i) => i.classList.remove('active'));
@@ -380,14 +455,14 @@ export class WaitingRoomView {
       }, 350);
     });
 
-    // Close dropdown on outside click
+    // Close dropdown on outside click (query live DOM references on each click)
     if (!this.docListenerBound) {
       this.docListenerBound = true;
       document.addEventListener('pointerdown', (e) => {
         const target = e.target as HTMLElement;
         if (!target.closest('#dropdown-room')) {
-          menu?.classList.add('hidden');
-          trigger?.classList.remove('open');
+          this.container.querySelector('#dropdown-menu-room')?.classList.add('hidden');
+          this.container.querySelector('#dropdown-trigger-room')?.classList.remove('open');
         }
       });
     }

@@ -174,7 +174,7 @@
 /* BOT DIFFICULTY HORIZONTAL CARDS */
 .bot-difficulty-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 8px;
 }
 
@@ -516,4 +516,64 @@
   .bot-difficulty-grid {
     grid-template-columns: repeat(auto-fit, minmax(105px, 1fr));
   }
+}
+
+/* PILOT CAREER SUMMARY STRIP */
+.career-summary-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  background: rgba(0, 240, 255, 0.04);
+  border: 1px solid rgba(0, 240, 255, 0.16);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+
+.career-summary-metrics {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.career-metric-item {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.career-metric-label {
+  color: var(--text-muted);
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+}
+
+.career-metric-val {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.btn-career-log {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 240, 255, 0.1);
+  border: 1px solid rgba(0, 240, 255, 0.35);
+  color: var(--cyan-primary);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 4px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background-color 0.12s, border-color 0.12s;
+}
+
+.btn-career-log:hover {
+  background: rgba(0, 240, 255, 0.2);
+  border-color: var(--cyan-primary);
 }

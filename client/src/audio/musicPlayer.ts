@@ -9,10 +9,13 @@ export class MusicPlayer {
   private volume: number = 0.65;
   private isPreviewing: boolean = false;
   private previewTimeout: number | null = null;
+  private customObjectUrl: string | null = null;
+  private stateListeners: Set<(isPlaying: boolean, trackTitle: string) => void> = new Set();
 
   public onTimeUpdate?: (currentTime: number, duration: number) => void;
   public onStateChange?: (isPlaying: boolean, trackTitle: string) => void;
   public onTrackEnded?: () => void;
+  public onError?: (message: string) => void;
 
   constructor() {
     this.audio = new Audio();
@@ -28,21 +31,34 @@ export class MusicPlayer {
     this.audio.addEventListener('ended', () => {
       this.isPreviewing = false;
       this.onTrackEnded?.();
-      this.onStateChange?.(false, this.currentTrackTitle);
+      this.emitStateChange(false, this.currentTrackTitle);
     });
 
     this.audio.addEventListener('play', () => {
-      this.onStateChange?.(true, this.currentTrackTitle);
+      this.emitStateChange(true, this.currentTrackTitle);
     });
 
     this.audio.addEventListener('pause', () => {
-      this.onStateChange?.(false, this.currentTrackTitle);
+      this.emitStateChange(false, this.currentTrackTitle);
     });
 
     this.audio.addEventListener('error', (e) => {
       console.warn('Audio playback error:', e);
-      this.onStateChange?.(false, this.currentTrackTitle);
+      this.emitStateChange(false, this.currentTrackTitle);
+      if (this.currentUrl) {
+        this.onError?.(`Unable to load audio track "${this.currentTrackTitle || 'Selected Track'}"`);
+      }
     });
+  }
+
+  private emitStateChange(isPlaying: boolean, trackTitle: string): void {
+    this.onStateChange?.(isPlaying, trackTitle);
+    this.stateListeners.forEach((cb) => cb(isPlaying, trackTitle));
+  }
+
+  public subscribeStateChange(cb: (isPlaying: boolean, trackTitle: string) => void): () => void {
+    this.stateListeners.add(cb);
+    return () => this.stateListeners.delete(cb);
   }
 
   public loadTrack(url: string, title: string = '', artist: string = ''): void {
@@ -62,9 +78,22 @@ export class MusicPlayer {
   }
 
   public loadCustomFile(file: File, title: string = file.name): string {
+    this.revokeCustomFile();
     const objectUrl = URL.createObjectURL(file);
+    this.customObjectUrl = objectUrl;
     this.loadTrack(objectUrl, title, 'Custom Upload');
     return objectUrl;
+  }
+
+  public revokeCustomFile(): void {
+    if (this.customObjectUrl) {
+      if (this.currentUrl === this.customObjectUrl) {
+        this.stop();
+        this.currentUrl = null;
+      }
+      URL.revokeObjectURL(this.customObjectUrl);
+      this.customObjectUrl = null;
+    }
   }
 
   public play(fromStart: boolean = false): void {
@@ -95,11 +124,13 @@ export class MusicPlayer {
       this.audio.pause();
       this.audio.currentTime = 0;
     }
-    this.onStateChange?.(false, this.currentTrackTitle);
+    this.emitStateChange(false, this.currentTrackTitle);
   }
 
   public stopPreview(): void {
-    this.stop();
+    if (this.isPreviewing) {
+      this.stop();
+    }
   }
 
   public togglePreview(url: string, title: string, artist: string = ''): boolean {

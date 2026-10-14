@@ -11,6 +11,7 @@ export interface OpponentStats {
   wpm: number;
   accuracy: number;
   wordsCompleted: number;
+  charIndex?: number;
   totalWords: number;
   combo: number;
 }
@@ -24,6 +25,8 @@ export class HudView {
   // Cached DOM references
   private streamEl: HTMLElement | null = null;
   private caretEl: HTMLElement | null = null;
+  private oppCaretEl: HTMLElement | null = null;
+  private unsubscribeMusicState: (() => void) | null = null;
   private typingBoxEl: HTMLElement | null = null;
   private wpmEl: HTMLElement | null = null;
   private accEl: HTMLElement | null = null;
@@ -150,20 +153,30 @@ export class HudView {
   }
 
   public renderBattleHud(
-    p1Name: string,
-    p2Name: string,
+    myName: string,
+    opponentName: string,
     passageTitle: string,
     errorMode: string,
     words: string[],
     activeSong: SongTrack | null = null,
-    isZenMode: boolean = false
+    isZenMode: boolean = false,
+    myRole: 'player1' | 'player2' = 'player1'
   ): void {
+    if (this.unsubscribeMusicState) {
+      this.unsubscribeMusicState();
+      this.unsubscribeMusicState = null;
+    }
+
     const isStrict = errorMode === 'strict_errors';
-    p1Name = escapeHtml(p1Name);
-    p2Name = escapeHtml(p2Name);
+    const safeMyName = escapeHtml(myName);
+    const safeOppName = escapeHtml(opponentName);
     passageTitle = escapeHtml(passageTitle);
     const songTitle = activeSong ? escapeHtml(activeSong.title) : '';
     const songArtist = activeSong ? escapeHtml(activeSong.artist) : '';
+
+    // Align Tug-of-War labels with actual 3D arena positions: P1 is Left (Cyan), P2 is Right (Magenta)
+    const leftLabel = myRole === 'player1' ? `${safeMyName} (YOU)` : `${safeOppName} (RIVAL)`;
+    const rightLabel = myRole === 'player2' ? `${safeMyName} (YOU)` : `${safeOppName} (RIVAL)`;
 
     this.container.innerHTML = `
       <div class="hud-container">
@@ -191,9 +204,9 @@ export class HudView {
         <!-- TUG OF WAR MOMENTUM BAR -->
         <div class="tug-meter-wrapper">
           <div class="tug-label-row">
-            <span class="text-cyan">${p1Name} (YOU)</span>
+            <span class="text-cyan">${leftLabel}</span>
             <span style="color: var(--amber-gold); font-size: 0.85rem;" id="tug-territory-text">50% // 50%</span>
-            <span class="text-magenta">${p2Name} (RIVAL)</span>
+            <span class="text-magenta">${rightLabel}</span>
           </div>
           <div class="tug-bar-track">
             <div id="tug-p1-bar" class="tug-bar-p1"></div>
@@ -249,7 +262,7 @@ export class HudView {
 
           <!-- INSTRUMENTATION & TELEMETRY -->
           <div class="stats-bar">
-            <!-- P1 STATS -->
+            <!-- LOCAL PLAYER STATS -->
             <div class="player-stats-cluster">
               <div class="stat-unit">
                 <span class="stat-label">WPM</span>
@@ -285,7 +298,7 @@ export class HudView {
                 : `
             <div class="player-stats-cluster" style="justify-content: flex-end;">
               <div class="stat-unit" style="align-items: flex-end;">
-                <span class="stat-label">OPPONENT WPM</span>
+                <span class="stat-label">RIVAL WPM</span>
                 <span id="stat-opp-wpm" class="stat-val text-magenta">0</span>
               </div>
               <div class="stat-unit" style="align-items: flex-end;">
@@ -352,11 +365,11 @@ export class HudView {
         }
       };
 
-      musicPlayer.onStateChange = (isPlaying) => {
+      this.unsubscribeMusicState = musicPlayer.subscribeStateChange((isPlaying) => {
         if (toggleBtn) {
           toggleBtn.innerHTML = isPlaying ? ICONS.pause(14) : ICONS.play(14);
         }
-      };
+      });
     }
 
     // Single-pass DocumentFragment mount for the entire passage
@@ -369,6 +382,16 @@ export class HudView {
       caret.className = 'passage-caret';
       fragment.appendChild(caret);
       this.caretEl = caret;
+
+      // Live Opponent / AI Ghost Caret for Duel & Solo modes
+      let oppCaret: HTMLElement | null = null;
+      if (!isZenMode) {
+        oppCaret = document.createElement('div');
+        oppCaret.id = 'passage-opp-caret';
+        oppCaret.className = 'passage-opp-caret';
+        fragment.appendChild(oppCaret);
+      }
+      this.oppCaretEl = oppCaret;
 
       this.wordMetas = words.map((word) => {
         const wordContainer = document.createElement('span');
@@ -397,7 +420,7 @@ export class HudView {
       this.activeWordIndex = -1;
       this.lastScrollTop = 0;
       this.streamEl.scrollTop = 0;
-      this.caretTracker.init(caret, this.streamEl, this.wordMetas);
+      this.caretTracker.init(caret, this.streamEl, this.wordMetas, oppCaret);
 
       // Reset dirty tracking caches for new match
       this.lastTugP1Percent = -1;
@@ -448,19 +471,30 @@ export class HudView {
     const buffer = engine.typedBuffer;
 
     if (currentWordIdx !== this.activeWordIndex) {
-      if (currentWordIdx > this.activeWordIndex && this.activeWordIndex >= 0) {
-        for (let w = this.activeWordIndex; w < currentWordIdx && w < this.wordMetas.length; w++) {
-          const meta = this.wordMetas[w];
-          const typed = engine.wordHistory[w] || '';
-          meta.container.className = typed !== meta.expectedWord ? 'passage-word word-completed word-error' : 'passage-word word-completed';
+      const startW = this.activeWordIndex >= 0 ? Math.min(this.activeWordIndex, currentWordIdx) : 0;
+      const endW = Math.min(
+        this.wordMetas.length - 1,
+        Math.max(this.activeWordIndex, currentWordIdx)
+      );
+
+      for (let w = startW; w <= endW; w++) {
+        if (w === currentWordIdx) continue;
+        const meta = this.wordMetas[w];
+        const hasOpp = meta.container.classList.contains('opp-current-word');
+        const typed = engine.wordHistory[w] || '';
+        const isScored = engine.wordScored[w];
+
+        if (isScored || (typed.length > 0 && w < currentWordIdx)) {
+          const isErr = !isScored && typed !== meta.expectedWord;
+          meta.container.className = `passage-word word-completed${isErr ? ' word-error' : ''}${hasOpp ? ' opp-current-word' : ''}`;
           for (let i = 0; i < meta.charSpans.length; i++) {
-            meta.charSpans[i].className = i < typed.length && typed[i] === meta.expectedWord[i] ? 'char char-correct' : 'char char-error';
+            meta.charSpans[i].className =
+              i < typed.length && typed[i] === meta.expectedWord[i]
+                ? 'char char-correct'
+                : 'char char-error';
           }
-        }
-      } else if (currentWordIdx < this.activeWordIndex) {
-        for (let w = currentWordIdx + 1; w <= this.activeWordIndex && w < this.wordMetas.length; w++) {
-          const meta = this.wordMetas[w];
-          meta.container.className = 'passage-word';
+        } else {
+          meta.container.className = `passage-word${hasOpp ? ' opp-current-word' : ''}`;
           meta.charSpans.forEach((cs) => (cs.className = 'char char-pending'));
           meta.extraSpans?.forEach((es) => es.remove());
           meta.extraSpans = [];
@@ -469,7 +503,9 @@ export class HudView {
 
       this.activeWordIndex = currentWordIdx;
       if (currentWordIdx < this.wordMetas.length) {
-        this.wordMetas[currentWordIdx].container.className = 'passage-word current-word-wrapper';
+        const curContainer = this.wordMetas[currentWordIdx].container;
+        const hasOpp = curContainer.classList.contains('opp-current-word');
+        curContainer.className = `passage-word current-word-wrapper${hasOpp ? ' opp-current-word' : ''}`;
         const { targetScroll } = this.caretTracker.getLineScrollOffset(currentWordIdx);
         if (targetScroll !== this.lastScrollTop) {
           this.lastScrollTop = targetScroll;
@@ -542,6 +578,7 @@ export class HudView {
         this.lastOppWords = oppWordsStr;
         this.oppWordsEl.textContent = oppWordsStr;
       }
+      this.caretTracker.updateOpponent(oppStats.wordsCompleted, oppStats.charIndex ?? 0);
     }
   }
 

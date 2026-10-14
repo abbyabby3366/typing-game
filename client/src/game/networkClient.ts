@@ -10,6 +10,7 @@ export type ServerMsg =
   | { type: 'TugSync'; payload: { tug_position: number } }
   | { type: 'GameOver'; payload: { winner: 'player1' | 'player2' | null; reason: string; final_tug_position: number; p1_stats: any; p2_stats: any } }
   | { type: 'RematchAgreed'; payload: { countdown_seconds: number; passage_title: string; passage_text: string; words: string[] } }
+  | { type: 'OpponentRequestedRematch'; payload: { player_role: 'player1' | 'player2' } }
   | { type: 'OpponentLeft' }
   | { type: 'ErrorAlert'; payload: { message: string } };
 

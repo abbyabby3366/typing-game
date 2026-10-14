@@ -14,6 +14,7 @@ class ProceduralSoundEngine {
   private keyClickBuffers: AudioBuffer[] = [];
   private errorBuffer: AudioBuffer | null = null;
   private keyClickIndex: number = 0;
+  private keyClicksEnabled: boolean = localStorage.getItem('cyber_key_clicks_enabled') !== 'false';
 
   public init(): void {
     if (this.ctx) return;
@@ -61,7 +62,7 @@ class ProceduralSoundEngine {
           const t = i / sampleRate;
           const tone = Math.sin(2 * Math.PI * freq * t) * Math.exp(-t * 180);
           const snap = (Math.random() * 2 - 1) * Math.exp(-t * 300) * 0.35;
-          data[i] = (tone + snap) * 0.4;
+          data[i] = (tone + snap) * 0.32;
         }
         return buffer;
       });
@@ -126,21 +127,52 @@ class ProceduralSoundEngine {
     return this.isMuted;
   }
 
-  // Keystroke sound: plays only on typo errors for clean, non-distracting typing
+  public toggleKeyClicks(): boolean {
+    this.keyClicksEnabled = !this.keyClicksEnabled;
+    try {
+      localStorage.setItem('cyber_key_clicks_enabled', String(this.keyClicksEnabled));
+    } catch {}
+    return this.keyClicksEnabled;
+  }
+
+  public getKeyClicksEnabled(): boolean {
+    return this.keyClicksEnabled;
+  }
+
+  // Keystroke sound: crisp mechanical click on normal keys (if enabled) and sawtooth crunch on typo
   public playKeystroke(isError: boolean = false): void {
-    if (!isError) return;
     const ctx = this.ensureContext();
     if (!ctx || this.isMuted) return;
 
-    if (!this.errorBuffer) {
+    if (!this.errorBuffer || this.keyClickBuffers.length === 0) {
       this.initKeyBuffers();
     }
-    if (!this.errorBuffer) return;
+
+    if (isError) {
+      if (!this.errorBuffer) return;
+      try {
+        const source = ctx.createBufferSource();
+        source.buffer = this.errorBuffer;
+        source.playbackRate.setValueAtTime(0.95 + Math.random() * 0.1, ctx.currentTime);
+        source.connect(this.masterGain!);
+        source.onended = () => {
+          try {
+            source.disconnect();
+          } catch {}
+        };
+        source.start();
+      } catch {}
+      return;
+    }
+
+    if (!this.keyClicksEnabled || this.keyClickBuffers.length === 0) return;
 
     try {
+      const buf = this.keyClickBuffers[this.keyClickIndex % this.keyClickBuffers.length];
+      this.keyClickIndex = (this.keyClickIndex + 1) & 3;
       const source = ctx.createBufferSource();
-      source.buffer = this.errorBuffer;
-      source.playbackRate.setValueAtTime(0.95 + Math.random() * 0.1, ctx.currentTime);
+      source.buffer = buf;
+      source.playbackRate.setValueAtTime(0.97 + Math.random() * 0.06, ctx.currentTime);
       source.connect(this.masterGain!);
       source.onended = () => {
         try {
@@ -148,9 +180,26 @@ class ProceduralSoundEngine {
         } catch {}
       };
       source.start();
-    } catch {
-      // Silent fallback
-    }
+    } catch {}
+  }
+
+  public playRematchChime(): void {
+    const ctx = this.ensureContext();
+    if (!ctx || this.isMuted) return;
+    const now = ctx.currentTime;
+    const freqs = [523.25, 659.25, 783.99];
+    freqs.forEach((f, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(f, now + i * 0.06);
+      gain.gain.setValueAtTime(0.22, now + i * 0.06);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.06 + 0.25);
+      osc.connect(gain);
+      gain.connect(this.masterGain!);
+      osc.start(now + i * 0.06);
+      osc.stop(now + i * 0.06 + 0.25);
+    });
   }
 
   // Laser blast firing sound with spatial stereo panning and rising combo scale

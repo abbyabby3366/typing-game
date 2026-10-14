@@ -5,19 +5,26 @@ import { ICONS } from './icons';
 import { escapeHtml } from './escapeHtml';
 
 export class LyricsSelectorView {
-  private container: HTMLElement;
+  private container: HTMLElement | null;
   private selectedSong: SongTrack = SONG_CATALOG.find((s) => s.id === 'never_gonna_give_you_up') || SONG_CATALOG[0];
   private activeFilter: 'ALL' | 'CHILL' | 'MODERATE' | 'BRISK' | 'INTENSE' = 'ALL';
   private customSong: SongTrack | null = null;
+  private confirmingRemoveCustom: boolean = false;
+  private unsubscribeMusicState: (() => void) | null = null;
   public onSongSelected?: (song: SongTrack) => void;
 
-  constructor(container: HTMLElement) {
+  constructor(container: HTMLElement | null) {
     this.container = container;
 
-    // Listen to audio player state changes to toggle preview buttons dynamically
-    musicPlayer.onStateChange = (isPlaying, title) => {
+    // Subscribe to audio player state changes and auto-dispose if container is detached
+    this.unsubscribeMusicState = musicPlayer.subscribeStateChange((isPlaying, title) => {
+      if (this.container && !this.container.isConnected) {
+        this.unsubscribeMusicState?.();
+        this.unsubscribeMusicState = null;
+        return;
+      }
       this.updatePreviewButtons(isPlaying, title);
-    };
+    });
   }
 
   public getSelectedSong(): SongTrack {
@@ -33,6 +40,17 @@ export class LyricsSelectorView {
     }
   }
 
+  public syncSongByLyrics(lyricsText?: string | null): SongTrack {
+    if (lyricsText) {
+      const trimmed = lyricsText.trim();
+      const found = SONG_CATALOG.find((s) => s.lyrics.trim() === trimmed);
+      if (found) {
+        this.selectedSong = found;
+      }
+    }
+    return this.selectedSong;
+  }
+
   private filterSongs(): SongTrack[] {
     const all = this.customSong ? [this.customSong, ...SONG_CATALOG] : SONG_CATALOG;
     if (this.activeFilter === 'ALL') return all;
@@ -40,6 +58,7 @@ export class LyricsSelectorView {
   }
 
   public render(): void {
+    if (!this.container) return;
     const filtered = this.filterSongs();
     const chillCount = SONG_CATALOG.filter((s) => s.difficultyBadge === 'CHILL').length;
     const modCount = SONG_CATALOG.filter((s) => s.difficultyBadge === 'MODERATE').length;
@@ -89,14 +108,18 @@ export class LyricsSelectorView {
                   ? 'badge-wpm-brisk'
                   : 'badge-wpm-intense';
 
+              const safeTitle = escapeHtml(song.title);
+              const safeArtist = escapeHtml(song.artist);
+              const safeGenre = escapeHtml(song.genre);
+
               return `
-              <div class="song-card ${isSelected ? 'selected' : ''}" data-song-id="${song.id}">
+              <div class="song-card ${isSelected ? 'selected' : ''}" data-song-id="${escapeHtml(song.id)}">
                 <div class="song-card-header">
                   <div class="song-info">
-                    <span class="song-name" title="${song.title}">${song.title}</span>
-                    <span class="song-artist" title="${song.artist}">${song.artist} &bull; ${song.genre}</span>
+                    <span class="song-name" title="${safeTitle}">${safeTitle}</span>
+                    <span class="song-artist" title="${safeArtist}">${safeArtist} &bull; ${safeGenre}</span>
                   </div>
-                  <button type="button" class="btn-preview-audio ${isPreviewing ? 'previewing' : ''}" data-preview-url="${song.audioUrl}" data-preview-title="${song.title}" data-preview-artist="${song.artist}">
+                  <button type="button" class="btn-preview-audio ${isPreviewing ? 'previewing' : ''}" data-preview-url="${escapeHtml(song.audioUrl)}" data-preview-title="${safeTitle}" data-preview-artist="${safeArtist}">
                     ${isPreviewing ? `${ICONS.stop(12)} STOP` : `${ICONS.play(12)} PREVIEW`}
                   </button>
                 </div>
@@ -121,14 +144,25 @@ export class LyricsSelectorView {
             </label>
             <input type="file" id="input-custom-song-file" accept="audio/*" style="display: none;" />
             ${
-              this.customSong
+              this.customSong && !this.confirmingRemoveCustom
                 ? `<button type="button" id="btn-clear-custom-song" style="background: transparent; border: none; color: #ff0055; font-family: var(--font-mono); font-size: 0.68rem; cursor: pointer;">[REMOVE]</button>`
                 : ''
             }
           </div>
           ${
+            this.customSong && this.confirmingRemoveCustom
+              ? `<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; background: rgba(255, 0, 85, 0.12); border: 1px solid rgba(255, 0, 85, 0.4); border-radius: 3px; font-family: var(--font-mono); font-size: 0.7rem;">
+                   <span style="color: #ff80aa;">Remove custom track "${escapeHtml(this.customSong.title)}"?</span>
+                   <div style="display: flex; gap: 6px;">
+                     <button type="button" id="btn-cancel-remove-song" class="btn-cyber-secondary" style="padding: 2px 8px; font-size: 0.66rem;">CANCEL</button>
+                     <button type="button" id="btn-confirm-remove-song" class="btn-cyber-danger" style="padding: 2px 8px; font-size: 0.66rem;">CONFIRM REMOVE</button>
+                   </div>
+                 </div>`
+              : ''
+          }
+          ${
             this.customSong
-              ? `<textarea id="input-custom-lyrics" class="custom-lyrics-input" rows="2" style="background: #02040a; border: 1px solid var(--border-subtle); color: #fff; font-family: var(--font-mono); font-size: 0.72rem; padding: 6px; border-radius: 3px; resize: none;" placeholder="Paste song lyrics here...">${this.customSong.lyrics}</textarea>`
+              ? `<textarea id="input-custom-lyrics" class="custom-lyrics-input" rows="2" style="background: #02040a; border: 1px solid var(--border-subtle); color: #fff; font-family: var(--font-mono); font-size: 0.72rem; padding: 6px; border-radius: 3px; resize: none;" placeholder="Paste song lyrics here...">${escapeHtml(this.customSong.lyrics)}</textarea>`
               : ''
           }
         </div>
@@ -139,6 +173,8 @@ export class LyricsSelectorView {
   }
 
   private attachEvents(): void {
+    if (!this.container) return;
+
     // Filter tabs
     const filterBtns = this.container.querySelectorAll('.wpm-filter-btn');
     filterBtns.forEach((btn) => {
@@ -158,7 +194,6 @@ export class LyricsSelectorView {
       if (!songId) return;
 
       card.addEventListener('pointerdown', (e) => {
-        // If preview button clicked, do not select
         const target = e.target as HTMLElement;
         if (target.closest('.btn-preview-audio')) return;
 
@@ -213,17 +248,37 @@ export class LyricsSelectorView {
           lyrics: 'Type the lyrics of your uploaded track here or enjoy typing along to your custom soundtrack.',
         };
         this.customSong = customTrack;
+        this.confirmingRemoveCustom = false;
         this.selectedSong = customTrack;
         this.render();
         this.onSongSelected?.(customTrack);
       }
     });
 
-    // Clear custom song
+    // Request confirmation to remove custom song
     const clearBtn = this.container.querySelector('#btn-clear-custom-song');
     clearBtn?.addEventListener('click', (e) => {
       e.preventDefault();
+      soundEngine.playUiClick();
+      this.confirmingRemoveCustom = true;
+      this.render();
+    });
+
+    const cancelRemoveBtn = this.container.querySelector('#btn-cancel-remove-song');
+    cancelRemoveBtn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      soundEngine.playUiClick();
+      this.confirmingRemoveCustom = false;
+      this.render();
+    });
+
+    const confirmRemoveBtn = this.container.querySelector('#btn-confirm-remove-song');
+    confirmRemoveBtn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      soundEngine.playUiClick();
+      musicPlayer.revokeCustomFile();
       this.customSong = null;
+      this.confirmingRemoveCustom = false;
       this.selectedSong = SONG_CATALOG[0];
       this.render();
       this.onSongSelected?.(this.selectedSong);
@@ -240,6 +295,7 @@ export class LyricsSelectorView {
   }
 
   private updatePreviewButtons(isPlaying: boolean, currentTitle: string): void {
+    if (!this.container) return;
     const previewBtns = this.container.querySelectorAll('.btn-preview-audio');
     previewBtns.forEach((btn) => {
       const title = btn.getAttribute('data-preview-title');

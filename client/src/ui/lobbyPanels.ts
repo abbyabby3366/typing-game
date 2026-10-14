@@ -6,6 +6,8 @@ export const CATEGORY_LABELS: Record<string, string> = {
   cyberpunk: 'Cyberpunk & Matrix',
   scifi: 'Sci-Fi Classics (Dune/Asimov)',
   philosophy: 'AI & Philosophy (Turing)',
+  coding: 'Code & Systems (Rust/GPU)',
+  sprints: 'Tactical Sprints (Fast Burst)',
   lyrics: 'Lyrics Mode (24 Songs)',
   all: 'All Curated Archives',
   custom: 'Custom Passage...',
@@ -24,7 +26,7 @@ export const ERROR_TOLERANCE_TOOLTIP_HTML = `
         <div class="tooltip-header">ERROR TOLERANCE MODES</div>
         <div class="tooltip-row">
           <span class="tooltip-tag tag-allow">ALLOW ERRORS</span>
-          <span class="tooltip-desc">Continue typing without stopping. Pressing <strong>Space</strong> advances even with typos—only <strong>100% correct words</strong> deal damage to your opponent.</span>
+          <span class="tooltip-desc">Continue typing without stopping. Pressing <strong>Space</strong> advances even with typos—only <strong>100% correct words</strong> deal damage, while skipping mistyped words causes slight recoil.</span>
         </div>
         <div class="tooltip-row">
           <span class="tooltip-tag tag-strict">STRICT MODE</span>
@@ -34,6 +36,35 @@ export const ERROR_TOLERANCE_TOOLTIP_HTML = `
     </span>
   </label>
 `;
+
+function renderArchiveDropdownItems(selectedCategory: string): string {
+  return `
+    <button type="button" class="cyber-dropdown-item ${selectedCategory === 'cyberpunk' ? 'active' : ''}" data-val="cyberpunk">
+      Cyberpunk & Matrix
+    </button>
+    <button type="button" class="cyber-dropdown-item ${selectedCategory === 'scifi' ? 'active' : ''}" data-val="scifi">
+      Sci-Fi Classics (Dune/Asimov)
+    </button>
+    <button type="button" class="cyber-dropdown-item ${selectedCategory === 'philosophy' ? 'active' : ''}" data-val="philosophy">
+      AI & Philosophy (Turing)
+    </button>
+    <button type="button" class="cyber-dropdown-item ${selectedCategory === 'coding' ? 'active' : ''}" data-val="coding">
+      Code & Systems (Rust/GPU)
+    </button>
+    <button type="button" class="cyber-dropdown-item ${selectedCategory === 'sprints' ? 'active' : ''}" data-val="sprints">
+      Tactical Sprints (Fast Burst)
+    </button>
+    <button type="button" class="cyber-dropdown-item ${selectedCategory === 'lyrics' ? 'active' : ''}" data-val="lyrics">
+      Lyrics Mode (24 Songs)
+    </button>
+    <button type="button" class="cyber-dropdown-item ${selectedCategory === 'all' ? 'active' : ''}" data-val="all">
+      All Curated Archives
+    </button>
+    <button type="button" class="cyber-dropdown-item ${selectedCategory === 'custom' ? 'active' : ''}" data-val="custom">
+      Custom Passage...
+    </button>
+  `;
+}
 
 export function renderSoloPanel(
   selectedBotDiff: string,
@@ -66,6 +97,11 @@ export function renderSoloPanel(
             <span class="diff-badge badge-hard">EXPERT</span>
             <span class="diff-name">CYBER-VIPER</span>
             <span class="diff-speed">~98 WPM</span>
+          </button>
+          <button type="button" class="bot-diff-card ${selectedBotDiff === 'cyber_god' ? 'active' : ''}" data-diff="cyber_god">
+            <span class="diff-badge badge-god">APEX</span>
+            <span class="diff-name">QUANTUM-GOD</span>
+            <span class="diff-speed">~135 WPM</span>
           </button>
           <button type="button" class="bot-diff-card ${selectedBotDiff === 'custom' ? 'active' : ''}" data-diff="custom">
             <span class="diff-badge badge-custom">CUSTOM</span>
@@ -121,24 +157,7 @@ export function renderSoloPanel(
                 <span class="cyber-dropdown-caret">${ICONS.chevronDown(14)}</span>
               </button>
               <div class="cyber-dropdown-menu hidden" id="dropdown-menu-solo">
-                <button type="button" class="cyber-dropdown-item ${selectedCategory === 'cyberpunk' ? 'active' : ''}" data-val="cyberpunk">
-                  Cyberpunk & Matrix
-                </button>
-                <button type="button" class="cyber-dropdown-item ${selectedCategory === 'scifi' ? 'active' : ''}" data-val="scifi">
-                  Sci-Fi Classics (Dune/Asimov)
-                </button>
-                <button type="button" class="cyber-dropdown-item ${selectedCategory === 'philosophy' ? 'active' : ''}" data-val="philosophy">
-                  AI & Philosophy (Turing)
-                </button>
-                <button type="button" class="cyber-dropdown-item ${selectedCategory === 'lyrics' ? 'active' : ''}" data-val="lyrics">
-                  Lyrics Mode (24 Songs)
-                </button>
-                <button type="button" class="cyber-dropdown-item ${selectedCategory === 'all' ? 'active' : ''}" data-val="all">
-                  All Curated Archives
-                </button>
-                <button type="button" class="cyber-dropdown-item ${selectedCategory === 'custom' ? 'active' : ''}" data-val="custom">
-                  Custom Passage...
-                </button>
+                ${renderArchiveDropdownItems(selectedCategory)}
               </div>
             </div>
           </div>
@@ -195,24 +214,7 @@ export function renderZenPanel(
                 <span class="cyber-dropdown-caret">${ICONS.chevronDown(14)}</span>
               </button>
               <div class="cyber-dropdown-menu hidden" id="dropdown-menu-zen">
-                <button type="button" class="cyber-dropdown-item ${selectedCategory === 'cyberpunk' ? 'active' : ''}" data-val="cyberpunk">
-                  Cyberpunk & Matrix
-                </button>
-                <button type="button" class="cyber-dropdown-item ${selectedCategory === 'scifi' ? 'active' : ''}" data-val="scifi">
-                  Sci-Fi Classics (Dune/Asimov)
-                </button>
-                <button type="button" class="cyber-dropdown-item ${selectedCategory === 'philosophy' ? 'active' : ''}" data-val="philosophy">
-                  AI & Philosophy (Turing)
-                </button>
-                <button type="button" class="cyber-dropdown-item ${selectedCategory === 'lyrics' ? 'active' : ''}" data-val="lyrics">
-                  Lyrics Mode (24 Songs)
-                </button>
-                <button type="button" class="cyber-dropdown-item ${selectedCategory === 'all' ? 'active' : ''}" data-val="all">
-                  All Curated Archives
-                </button>
-                <button type="button" class="cyber-dropdown-item ${selectedCategory === 'custom' ? 'active' : ''}" data-val="custom">
-                  Custom Passage...
-                </button>
+                ${renderArchiveDropdownItems(selectedCategory)}
               </div>
             </div>
           </div>

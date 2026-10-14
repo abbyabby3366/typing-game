@@ -96,4 +96,25 @@ export const ICONS = {
     ),
   chevronDown: (size = 14) =>
     svg(`<polyline points="6 9 12 15 18 9"></polyline>`, size),
+  chart: (size = 16) =>
+    svg(
+      `<line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line>`,
+      size
+    ),
+  keyboard: (size = 16) =>
+    svg(
+      `<rect x="2" y="4" width="20" height="16" rx="2" ry="2"></rect><path d="M6 8h.001M10 8h.001M14 8h.001M18 8h.001M8 12h.001M12 12h.001M16 12h.001M7 16h10"></path>`,
+      size
+    ),
+  trophy: (size = 16) =>
+    svg(
+      `<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path><path d="M4 22h16"></path><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"></path><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"></path><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path>`,
+      size
+    ),
+  trash: (size = 15) =>
+    svg(
+      `<polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>`,
+      size
+    ),
 };
+

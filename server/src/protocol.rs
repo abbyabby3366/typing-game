@@ -163,8 +163,12 @@ pub enum ServerMsg {
         passage_text: String,
         words: Vec<String>,
     },
+    OpponentRequestedRematch {
+        player_role: PlayerRole,
+    },
     OpponentLeft,
     ErrorAlert {
         message: String,
     },
 }
+

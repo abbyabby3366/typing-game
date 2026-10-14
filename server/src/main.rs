@@ -141,6 +141,17 @@ fn clamp_custom_text(text: Option<String>) -> Option<String> {
     })
 }
 
+async fn allocate_unique_room_code(state: &AppState) -> String {
+    let rooms = state.rooms.read().await;
+    for _ in 0..16 {
+        let candidate = generate_room_code();
+        if !rooms.contains_key(&candidate) {
+            return candidate;
+        }
+    }
+    generate_room_code()
+}
+
 /// Detaches this connection from its current room (if any): stops the bot, notifies the
 /// opponent, and drops the room once no human player remains. The socket stays usable.
 async fn leave_room(
@@ -160,14 +171,41 @@ async fn leave_room(
         if let Some(h) = room.bot_abort_handle.take() {
             h.abort();
         }
+        let was_active_pvp = !room.is_bot_match
+            && (room.state == RoomState::Active || room.state == RoomState::Starting);
+
         match role {
             PlayerRole::Player1 => {
+                if was_active_pvp && room.p2.is_some() {
+                    room.send_to_opponent(
+                        PlayerRole::Player1,
+                        ServerMsg::GameOver {
+                            winner: Some(PlayerRole::Player2),
+                            reason: GameOverReason::OpponentResigned,
+                            final_tug_position: room.tug_position,
+                            p1_stats: room.p1_stats.clone(),
+                            p2_stats: room.p2_stats.clone(),
+                        },
+                    );
+                }
                 room.p1 = None;
                 room.state = RoomState::Finished;
                 room.broadcast(ServerMsg::OpponentLeft);
                 true
             }
             PlayerRole::Player2 => {
+                if was_active_pvp && room.p1.is_some() {
+                    room.send_to_opponent(
+                        PlayerRole::Player2,
+                        ServerMsg::GameOver {
+                            winner: Some(PlayerRole::Player1),
+                            reason: GameOverReason::OpponentResigned,
+                            final_tug_position: room.tug_position,
+                            p1_stats: room.p1_stats.clone(),
+                            p2_stats: room.p2_stats.clone(),
+                        },
+                    );
+                }
                 room.p2 = None;
                 if room.p1.is_some() && !room.is_bot_match {
                     room.state = RoomState::WaitingForOpponent;
@@ -181,13 +219,18 @@ async fn leave_room(
                     room.p1_stats.accuracy = 100.0;
                     room.p1_stats.max_combo = 0;
                     room.p2_stats = PlayerStats { name: "Opponent".to_string(), wpm: 0.0, accuracy: 100.0, max_combo: 0, words_completed: 0, chars_typed: 0 };
+                    room.p1_word_index = 0;
+                    room.p2_word_index = 0;
                     room.p1_rematch = false;
                     room.p2_rematch = false;
 
                     let (title, text, words) = passages::get_passage_by_category(&room.settings.category, room.settings.custom_text.as_deref());
+                    let words_len = words.len();
                     room.passage_title = title;
                     room.passage_text = text;
                     room.words = words;
+                    room.p1_scored_words = vec![false; words_len];
+                    room.p2_scored_words = vec![false; words_len];
 
                     room.broadcast(ServerMsg::OpponentLeft);
                     false
@@ -259,7 +302,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                 custom_text,
             } => {
                 leave_room(&state, &mut current_room_code, &mut current_room_arc, &mut player_role).await;
-                let room_code = generate_room_code();
+                let room_code = allocate_unique_room_code(&state).await;
                 let settings = GameSettings {
                     error_mode,
                     category,
@@ -307,11 +350,14 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                         let custom_text = clamp_custom_text(custom_text);
                         room.settings.custom_text = custom_text.clone();
                         let (title, text, words) = passages::get_passage_by_category(&category, custom_text.as_deref());
+                        let words_len = words.len();
                         room.passage_title = title;
                         room.passage_text = text;
                         room.words = words;
+                        room.p1_scored_words = vec![false; words_len];
+                        room.p2_scored_words = vec![false; words_len];
 
-                        let _ = tx.send(ServerMsg::RoomSettingsUpdated {
+                        room.broadcast(ServerMsg::RoomSettingsUpdated {
                             settings: room.settings.clone(),
                         });
                     }
@@ -327,7 +373,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                 custom_text,
             } => {
                 leave_room(&state, &mut current_room_code, &mut current_room_arc, &mut player_role).await;
-                let room_code = generate_room_code();
+                let room_code = allocate_unique_room_code(&state).await;
                 let settings = GameSettings {
                     error_mode,
                     category,
@@ -490,6 +536,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
             }
 
             ClientMsg::WordCompleted {
+                word_index,
                 word,
                 combo,
                 wpm,
@@ -500,7 +547,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                 if let (Some(ref room_arc), Some(role)) = (&current_room_arc, player_role) {
                     let mut room = room_arc.write().await;
                     let correct = is_correct.unwrap_or(true);
-                    if let Some(game_over) = room.handle_word_completed(role, word, combo, wpm, accuracy, correct) {
+                    if let Some(game_over) = room.handle_word_completed(role, word_index, word, combo, wpm, accuracy, correct) {
                         room.broadcast(game_over);
                     }
                 }
@@ -514,16 +561,18 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                 combo,
             } => {
                 if let (Some(ref room_arc), Some(role)) = (&current_room_arc, player_role) {
-                    let room = room_arc.read().await;
+                    let mut room = room_arc.write().await;
+                    let (clean_wpm, clean_acc, clean_combo) =
+                        room.handle_typing_progress(role, wpm, accuracy, combo);
                     room.send_to_opponent(
                         role,
                         ServerMsg::OpponentProgressUpdate {
                             player_role: role,
                             char_index,
                             word_index,
-                            wpm,
-                            accuracy,
-                            combo,
+                            wpm: clean_wpm,
+                            accuracy: clean_acc,
+                            combo: clean_combo,
                         },
                     );
                 }
@@ -536,17 +585,27 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
             ClientMsg::RequestRematch => {
                 if let (Some(ref room_arc), Some(role)) = (&current_room_arc, player_role) {
                     let mut room = room_arc.write().await;
+                    if room.state != RoomState::Finished {
+                        continue;
+                    }
+                    if !room.is_bot_match && (room.p1.is_none() || room.p2.is_none()) {
+                        continue;
+                    }
                     match role {
                         PlayerRole::Player1 => room.p1_rematch = true,
                         PlayerRole::Player2 => room.p2_rematch = true,
                     }
 
                     if room.is_bot_match || (room.p1_rematch && room.p2_rematch) {
+                        if let Some(h) = room.bot_abort_handle.take() {
+                            h.abort();
+                        }
                         // Reset state for new round
                         let (title, text, words) = passages::get_passage_by_category(
                             &room.settings.category,
                             room.settings.custom_text.as_deref(),
                         );
+                        let words_len = words.len();
                         room.passage_title = title.clone();
                         room.passage_text = text.clone();
                         room.words = words.clone();
@@ -554,10 +613,20 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                         room.state = RoomState::Active;
                         room.p1_rematch = false;
                         room.p2_rematch = false;
+                        room.p1_word_index = 0;
+                        room.p2_word_index = 0;
+                        room.p1_scored_words = vec![false; words_len];
+                        room.p2_scored_words = vec![false; words_len];
                         room.p1_stats.words_completed = 0;
                         room.p1_stats.chars_typed = 0;
+                        room.p1_stats.wpm = 0.0;
+                        room.p1_stats.accuracy = 100.0;
+                        room.p1_stats.max_combo = 0;
                         room.p2_stats.words_completed = 0;
                         room.p2_stats.chars_typed = 0;
+                        room.p2_stats.wpm = 0.0;
+                        room.p2_stats.accuracy = 100.0;
+                        room.p2_stats.max_combo = 0;
 
                         if room.is_bot_match {
                             if let Some(diff) = room.bot_difficulty {
@@ -572,6 +641,11 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                             passage_text: text,
                             words,
                         });
+                    } else {
+                        room.send_to_opponent(
+                            role,
+                            ServerMsg::OpponentRequestedRematch { player_role: role },
+                        );
                     }
                 }
             }

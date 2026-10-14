@@ -46,6 +46,60 @@ pub const PASSAGES: &[Passage] = &[
         category: "scifi",
         text: "Man considered because, in a way, it was the end of all things. The stars and galaxies died and snuffed out, and space grew black in the wake of ten trillion years of running down. The consciousness of Man fused with the cosmic supercomputer, and all the questions of the universe converged into a single point of light.",
     },
+    Passage {
+        id: "cyberpunk_ghost_shell",
+        title: "Ghost in the Shell: Net Dive",
+        category: "cyberpunk",
+        text: "The net is vast and infinite. When our consciousness merges with the global information sea, boundaries between silicon memory and human intuition dissolve into pure signal. Every keystroke transmits a pulse across fiber optic arteries, racing past ice firewalls toward the central nexus core.",
+    },
+    Passage {
+        id: "scifi_foundation",
+        title: "Foundation: Psychohistory",
+        category: "scifi",
+        text: "The fall of Empire, gentlemen, is a massive thing, however, and not easily fought. It is dictated by a rising bureaucracy, a receding initiative, a freezing of caste, and a damming of curiosity. Only a disciplined synthesis of knowledge across the galaxy can shorten the dark age to a single millennium.",
+    },
+    Passage {
+        id: "philosophy_digital_war",
+        title: "The Art of Digital Velocity",
+        category: "philosophy",
+        text: "Speed without precision is mere noise in the void, yet hesitation surrenders the high ground before the first packet arrives. True mastery emerges when thought and motion fuse into an effortless rhythm, where fingers strike each key before conscious deliberation even begins.",
+    },
+    Passage {
+        id: "coding_rust_memory",
+        title: "Rust Ownership & Zero-Cost Abstractions",
+        category: "coding",
+        text: "Ownership rules guarantee memory safety without a garbage collector. Each value in Rust has a single owner, and when that owner goes out of scope the resource is deterministically dropped. Immutable references allow concurrent reads across threads, while mutable borrows enforce exclusive access at compile time.",
+    },
+    Passage {
+        id: "coding_distributed_consensus",
+        title: "Distributed Consensus & Event Loops",
+        category: "coding",
+        text: "High-frequency state synchronization requires non-blocking sockets, deterministic state machines, and zero-allocation serialization paths. By disabling Nagle buffering and batching outbound frames on the reactor loop, sub-millisecond telemetry streams across the network without head-of-line blocking.",
+    },
+    Passage {
+        id: "coding_shader_pipeline",
+        title: "WebGL Shader & Particle Pipeline",
+        category: "coding",
+        text: "Instanced buffer geometries upload vertex positions and velocity vectors directly to GPU memory. Fragment shaders evaluate additive neon bloom and exponential fog attenuation in parallel, sustaining locked frame pacing even during intense particle detonation bursts.",
+    },
+    Passage {
+        id: "sprint_orbital_burst",
+        title: "Orbital Strike Burst",
+        category: "sprints",
+        text: "Capacitors charged to maximum threshold. Lock target coordinates, bypass thermal limiters, and fire every photon cannon in a single relentless volley.",
+    },
+    Passage {
+        id: "sprint_zero_day",
+        title: "Zero-Day Kernel Breach",
+        category: "sprints",
+        text: "Inject the payload into ring zero before the watchdog timer resets. Every millisecond counts when racing an autonomous intrusion countermeasure.",
+    },
+    Passage {
+        id: "sprint_quantum_overclock",
+        title: "Quantum Relay Overclock",
+        category: "sprints",
+        text: "Override neural governors and push clock frequencies past redline. Pure velocity decides who holds the nexus bridge tonight.",
+    },
 ];
 
 pub fn get_passage_by_category(category: &str, custom_text: Option<&str>) -> (String, String, Vec<String>) {
@@ -71,7 +125,7 @@ pub fn get_passage_by_category(category: &str, custom_text: Option<&str>) -> (St
     let selected = if let Some(p) = matching.choose(&mut rng) {
         *p
     } else {
-        PASSAGES.choose(&mut rng).unwrap()
+        PASSAGES.choose(&mut rng).expect("PASSAGES catalog must not be empty")
     };
 
     let words: Vec<String> = selected
@@ -82,3 +136,34 @@ pub fn get_passage_by_category(category: &str, custom_text: Option<&str>) -> (St
 
     (selected.title.to_string(), selected.text.to_string(), words)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_custom_passage_overrides_category() {
+        let (title, text, words) = get_passage_by_category("cyberpunk", Some("  Hello   cyber   world!  "));
+        assert_eq!(title, "Custom Duel Text");
+        assert_eq!(text, "Hello   cyber   world!");
+        assert_eq!(words, vec!["Hello", "cyber", "world!"]);
+    }
+
+    #[test]
+    fn test_whitespace_only_custom_falls_back_to_category() {
+        let (title, _text, words) = get_passage_by_category("coding", Some("   \n\t  "));
+        assert_ne!(title, "Custom Duel Text");
+        assert!(!words.is_empty());
+    }
+
+    #[test]
+    fn test_all_categories_return_valid_passages() {
+        for cat in &["cyberpunk", "scifi", "philosophy", "coding", "sprints", "all"] {
+            let (title, text, words) = get_passage_by_category(cat, None);
+            assert!(!title.is_empty());
+            assert!(!text.is_empty());
+            assert!(words.len() >= 15, "Category {} passage should have at least 15 words", cat);
+        }
+    }
+}
+
